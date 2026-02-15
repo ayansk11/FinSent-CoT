@@ -43,6 +43,12 @@ FinSent-CoT/
 - **GPUs**: NVIDIA H100 (hopper partition, 4 per node, 80GB each)
 - **Home**: `/N/u/ayshaikh/Quartz` (small quota)
 - **Scratch**: `/N/scratch/ayshaikh` (large, use for everything)
+- **Modules**: `module load python/gpu/3.11.5` + `module load cudatoolkit/12.1`
+
+### CRITICAL: Cluster Selection
+- **Big Red 200**: `ssh ayshaikh@bigred200.uits.iu.edu` — has `gpu` (A100) + `hopper` (H100) partitions
+- **Quartz**: `ssh ayshaikh@quartz.uits.iu.edu` — has `gpu` (V100) only, NO hopper partition
+- **Always submit hopper jobs from Big Red 200 login node**, NOT from Quartz
 
 ## Critical: Cache Directory Redirect
 All SLURM scripts MUST redirect caches to scratch:

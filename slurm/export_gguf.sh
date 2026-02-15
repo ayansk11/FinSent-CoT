@@ -12,31 +12,54 @@
 #SBATCH --error=logs/export_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu
 #SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --exclusive
 
-# ─── Cache redirect ─────────────────────────────────────────────────────────
+# ============================================================
+# Export: Dual GGUF (Q5_K_M + Q4_K_M) + HuggingFace upload
+# ============================================================
+
+set -euo pipefail
+
+echo "=== Job Info ==="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
+echo "GPUs: $SLURM_GPUS_ON_NODE"
+echo "Start: $(date)"
+echo "================"
+
+# ─── Cache redirect (CRITICAL — home dir has 5GB quota) ─────────────────────
 export HF_HOME=/N/scratch/ayshaikh/.cache/huggingface
 export HF_HUB_CACHE=/N/scratch/ayshaikh/.cache/huggingface/hub
 export XDG_CACHE_HOME=/N/scratch/ayshaikh/.cache
 export TORCH_HOME=/N/scratch/ayshaikh/.cache/torch
 export TMPDIR=/N/scratch/ayshaikh/tmp
-mkdir -p $TMPDIR
+export CUDA_CACHE_PATH=/N/scratch/ayshaikh/.cache/nv
+export TRITON_CACHE_DIR=/N/scratch/ayshaikh/.cache/triton
+export NUMBA_CACHE_DIR=/N/scratch/ayshaikh/.cache/numba
+mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
+         "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
 # ─── Load modules ───────────────────────────────────────────────────────────
-module load python/gpu
+module load python/gpu/3.11.5
+module load cudatoolkit/12.1
 
 # ─── Activate venv & cd ─────────────────────────────────────────────────────
-source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
 cd /N/scratch/ayshaikh/FinSent-CoT
+source venv/bin/activate
 mkdir -p logs
 
 # ─── Ensure export deps are installed (needs GPU node) ────────────────────
-pip install unsloth --quiet 2>/dev/null
+pip install unsloth --quiet 2>/dev/null || true
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
-source /N/scratch/ayshaikh/.tokens
+if [ -f /N/scratch/ayshaikh/.tokens ]; then
+    source /N/scratch/ayshaikh/.tokens
+    echo "HF Token: $([ -n "${HF_TOKEN:-}" ] && echo 'SET' || echo 'NOT SET')"
+    echo "WANDB Key: $([ -n "${WANDB_API_KEY:-}" ] && echo 'SET' || echo 'NOT SET')"
+fi
 export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
-mkdir -p $WANDB_DIR
+mkdir -p "$WANDB_DIR"
 
 # ─── Export to GGUF (both Q5_K_M and Q4_K_M) ─────────────────────────────
 echo "[$(date)] Starting dual GGUF export..."
@@ -45,11 +68,13 @@ python training/export_gguf.py \
     --output-dir ./export \
     --model-name FinSent-CoT-Qwen3-4B
 
-echo "[$(date)] Export complete! Exit code: $?"
+EXPORT_EXIT=$?
+echo "[$(date)] Export complete! Exit code: $EXPORT_EXIT"
 
 # ─── Upload to HuggingFace ─────────────────────────────────────────────────
-echo "[$(date)] Uploading to HuggingFace..."
-python -c "
+if [ $EXPORT_EXIT -eq 0 ]; then
+    echo "[$(date)] Uploading to HuggingFace..."
+    python -c "
 from huggingface_hub import HfApi
 api = HfApi()
 
@@ -81,5 +106,10 @@ api.upload_folder(
 
 print('HuggingFace upload complete!')
 "
+    echo "[$(date)] Upload complete!"
+fi
 
-echo "[$(date)] All done!"
+echo ""
+echo "End: $(date)"
+echo "Exit code: $EXPORT_EXIT"
+exit $EXPORT_EXIT
