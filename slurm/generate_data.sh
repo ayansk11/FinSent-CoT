@@ -22,8 +22,7 @@ export TMPDIR=/N/scratch/ayshaikh/tmp
 mkdir -p $TMPDIR $HF_HOME $TORCH_HOME
 
 # ─── Load modules ───────────────────────────────────────────────────────────
-module load python
-module load cuda
+module load python/gpu
 
 # ─── Activate venv ──────────────────────────────────────────────────────────
 source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate

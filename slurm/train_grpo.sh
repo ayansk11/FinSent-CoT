@@ -22,8 +22,7 @@ export TMPDIR=/N/scratch/ayshaikh/tmp
 mkdir -p $TMPDIR
 
 # ─── Load modules ───────────────────────────────────────────────────────────
-module load python
-module load cuda
+module load python/gpu
 
 # ─── Activate venv & cd ─────────────────────────────────────────────────────
 source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
