@@ -29,6 +29,9 @@ source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
 cd /N/scratch/ayshaikh/FinSent-CoT
 mkdir -p logs
 
+# ─── Ensure training deps are installed (needs GPU node) ──────────────────
+pip install unsloth trl --quiet 2>/dev/null
+
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 source /N/scratch/ayshaikh/.tokens
 export WANDB_PROJECT=FinSent-CoT

@@ -23,9 +23,13 @@ mkdir -p $TMPDIR $HF_HOME $TORCH_HOME
 
 # ─── Load modules ───────────────────────────────────────────────────────────
 module load python/gpu
+module load cudatoolkit/12.6
 
 # ─── Activate venv ──────────────────────────────────────────────────────────
 source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
+
+# ─── Ensure vLLM is installed (needs GPU node) ─────────────────────────────
+pip install vllm openai --quiet 2>/dev/null
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 source /N/scratch/ayshaikh/.tokens
