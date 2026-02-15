@@ -12,31 +12,55 @@
 #SBATCH --error=logs/grpo_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu
 #SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --exclusive
 
-# ─── Cache redirect ─────────────────────────────────────────────────────────
+# ============================================================
+# GRPO Training: up to 3000 steps with early stopping
+# 4 equal-weight reward functions, patience-based convergence
+# ============================================================
+
+set -euo pipefail
+
+echo "=== Job Info ==="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
+echo "GPUs: $SLURM_GPUS_ON_NODE"
+echo "Start: $(date)"
+echo "================"
+
+# ─── Cache redirect (CRITICAL — home dir has 5GB quota) ─────────────────────
 export HF_HOME=/N/scratch/ayshaikh/.cache/huggingface
 export HF_HUB_CACHE=/N/scratch/ayshaikh/.cache/huggingface/hub
 export XDG_CACHE_HOME=/N/scratch/ayshaikh/.cache
 export TORCH_HOME=/N/scratch/ayshaikh/.cache/torch
 export TMPDIR=/N/scratch/ayshaikh/tmp
-mkdir -p $TMPDIR
+export CUDA_CACHE_PATH=/N/scratch/ayshaikh/.cache/nv
+export TRITON_CACHE_DIR=/N/scratch/ayshaikh/.cache/triton
+export NUMBA_CACHE_DIR=/N/scratch/ayshaikh/.cache/numba
+mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
+         "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
 # ─── Load modules ───────────────────────────────────────────────────────────
-module load python/gpu
+module load python/gpu/3.11.5
+module load cudatoolkit/12.1
 
 # ─── Activate venv & cd ─────────────────────────────────────────────────────
-source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
 cd /N/scratch/ayshaikh/FinSent-CoT
+source venv/bin/activate
 mkdir -p logs
 
 # ─── Ensure training deps are installed (needs GPU node) ──────────────────
-pip install unsloth trl --quiet 2>/dev/null
+pip install unsloth trl --quiet 2>/dev/null || true
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
-source /N/scratch/ayshaikh/.tokens
+if [ -f /N/scratch/ayshaikh/.tokens ]; then
+    source /N/scratch/ayshaikh/.tokens
+    echo "HF Token: $([ -n "${HF_TOKEN:-}" ] && echo 'SET' || echo 'NOT SET')"
+    echo "WANDB Key: $([ -n "${WANDB_API_KEY:-}" ] && echo 'SET' || echo 'NOT SET')"
+fi
 export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
-mkdir -p $WANDB_DIR
+mkdir -p "$WANDB_DIR"
 
 # ─── Run GRPO training ─────────────────────────────────────────────────────
 echo "[$(date)] Starting GRPO training..."
@@ -54,4 +78,8 @@ python training/train_grpo.py \
     --early-stop-min-delta 0.01 \
     --early-stop-warmup 200
 
-echo "[$(date)] GRPO training complete! Exit code: $?"
+GRPO_EXIT=$?
+echo ""
+echo "End: $(date)"
+echo "GRPO training exit code: $GRPO_EXIT"
+exit $GRPO_EXIT
