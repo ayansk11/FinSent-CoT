@@ -17,6 +17,10 @@
 # ============================================================
 # Data Generation: Qwen3-235B-A22B-FP8 via vLLM on 4x H100
 # Generates ~50K CoT financial sentiment samples
+#
+# NOTE: Uses a SEPARATE venv for vLLM server (0.8.5 + torch 2.6.0)
+# because vLLM >=0.9 has broken MoE kernels (topk_softmax bug).
+# The generation Python scripts run in the main project venv.
 # ============================================================
 
 set -euo pipefail
@@ -44,13 +48,9 @@ mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
 module load python/gpu/3.11.5
 module load cudatoolkit/12.1
 
-# ─── Activate venv ──────────────────────────────────────────────────────────
+# ─── Project dir ──────────────────────────────────────────────────────────
 cd /N/scratch/ayshaikh/FinSent-CoT
-source venv/bin/activate
 mkdir -p logs
-
-# ─── Ensure vLLM is installed (needs GPU node) ─────────────────────────────
-pip install vllm openai --quiet 2>/dev/null || true
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
@@ -62,6 +62,26 @@ export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
+# ─── Setup vLLM venv (separate from main venv, needs torch 2.6.0) ────────
+# vLLM >= 0.9 has broken MoE kernels (_moe_C topk_softmax bug).
+# Qwen team recommends vLLM >= 0.8.5 for Qwen3-235B-A22B.
+# vLLM 0.8.5 requires torch 2.6.0 — incompatible with our main venv (torch 2.9.0).
+VLLM_VENV=/N/scratch/ayshaikh/vllm_venv
+if [ ! -f "$VLLM_VENV/bin/activate" ]; then
+    echo "[$(date)] Creating vLLM venv (one-time setup)..."
+    python -m venv "$VLLM_VENV"
+    source "$VLLM_VENV/bin/activate"
+    pip install --upgrade pip
+    echo "[$(date)] Installing vLLM 0.8.5 (this may take a few minutes)..."
+    pip install vllm==0.8.5
+    echo "[$(date)] vLLM venv ready!"
+else
+    echo "[$(date)] Using existing vLLM venv..."
+    source "$VLLM_VENV/bin/activate"
+    # Verify vLLM is installed
+    python -c "import vllm; print(f'vLLM version: {vllm.__version__}')"
+fi
+
 # ─── Start vLLM server with Qwen3-235B-A22B-FP8 (4x H100 tensor parallel) ─
 echo "[$(date)] Starting vLLM server..."
 python -m vllm.entrypoints.openai.api_server \
@@ -69,7 +89,6 @@ python -m vllm.entrypoints.openai.api_server \
     --tensor-parallel-size 4 \
     --max-model-len 2048 \
     --gpu-memory-utilization 0.90 \
-    --dtype float16 \
     --port 8000 \
     --host 0.0.0.0 \
     --trust-remote-code \
@@ -105,6 +124,12 @@ fi
 # Verify model is loaded
 curl -s http://localhost:8000/v1/models | python -m json.tool || echo "WARNING: Could not parse /v1/models response"
 echo ""
+
+# ─── Switch to main project venv for generation scripts ──────────────────
+# (vLLM server continues running in background from the vllm_venv)
+deactivate
+source /N/scratch/ayshaikh/FinSent-CoT/venv/bin/activate
+echo "[$(date)] Switched to project venv for generation scripts"
 
 # ─── Run data generation ───────────────────────────────────────────────────
 echo "[$(date)] Starting CoT data generation..."
