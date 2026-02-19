@@ -8,11 +8,12 @@ Features:
 - Multi-source dataset (FinGPT + FiQA + PhraseBank)
 - Strict XML validation (<reasoning>...</reasoning><answer>...</answer>)
 - Checkpoint/resume support
-- Parallel batch generation via vLLM
+- Concurrent async generation (16 parallel requests to vLLM)
 - Automatic quality filtering
 """
 
 import argparse
+import asyncio
 import json
 import os
 import re
@@ -20,7 +21,7 @@ import time
 from pathlib import Path
 
 import wandb
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from sources import FinancialSample, load_all_sources
 
@@ -138,7 +139,105 @@ def validate_response(response: str, expected_label: str) -> dict:
     }
 
 
-# ─── Generation ──────────────────────────────────────────────────────────────
+# ─── Async Generation ───────────────────────────────────────────────────────
+
+
+async def generate_single(
+    client: AsyncOpenAI,
+    model: str,
+    sample: FinancialSample,
+    max_retries: int = 2,
+    temperature: float = 0.4,
+    semaphore: asyncio.Semaphore = None,
+) -> dict:
+    """Generate CoT for a single sample with retries, respecting concurrency limit."""
+    async with semaphore:
+        for attempt in range(max_retries + 1):
+            try:
+                completion = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": USER_TEMPLATE.format(text=sample.text),
+                        },
+                    ],
+                    max_tokens=512,
+                    temperature=temperature + (attempt * 0.1),
+                    top_p=0.9,
+                )
+                response_text = completion.choices[0].message.content.strip()
+
+                # Strip <think>...</think> blocks from Qwen3
+                response_text = re.sub(
+                    r"<think>.*?</think>", "", response_text, flags=re.DOTALL
+                ).strip()
+
+                validation = validate_response(response_text, sample.label)
+
+                if validation["valid"]:
+                    return {
+                        "text": sample.text,
+                        "label": sample.label,
+                        "source": sample.source,
+                        "reasoning": validation["reasoning"],
+                        "answer": validation["answer"],
+                        "response_raw": response_text,
+                        "attempt": attempt + 1,
+                    }
+                elif attempt == max_retries:
+                    return {
+                        "text": sample.text,
+                        "label": sample.label,
+                        "source": sample.source,
+                        "reasoning": validation["reasoning"] or "",
+                        "answer": validation["answer"] or sample.label,
+                        "response_raw": response_text or "",
+                        "attempt": attempt + 1,
+                        "issues": validation["issues"],
+                    }
+
+            except Exception as e:
+                if attempt == max_retries:
+                    return {
+                        "text": sample.text,
+                        "label": sample.label,
+                        "source": sample.source,
+                        "reasoning": "",
+                        "answer": sample.label,
+                        "response_raw": "",
+                        "attempt": attempt + 1,
+                        "issues": [f"api_error: {str(e)}"],
+                    }
+                else:
+                    await asyncio.sleep(2)
+
+
+async def generate_cot_batch_async(
+    client: AsyncOpenAI,
+    model: str,
+    samples: list[FinancialSample],
+    max_retries: int = 2,
+    temperature: float = 0.4,
+    max_concurrent: int = 16,
+) -> list[dict]:
+    """
+    Generate CoT for a batch of samples concurrently.
+    Uses a semaphore to limit concurrent requests to max_concurrent.
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    tasks = [
+        generate_single(client, model, sample, max_retries, temperature, semaphore)
+        for sample in samples
+    ]
+
+    results = await asyncio.gather(*tasks)
+    return list(results)
+
+
+# ─── Legacy sync generation (kept for compatibility) ────────────────────────
 
 
 def generate_cot_batch(
@@ -149,7 +248,7 @@ def generate_cot_batch(
     temperature: float = 0.4,
 ) -> list[dict]:
     """
-    Generate CoT for a batch of samples.
+    Generate CoT for a batch of samples (sequential, fallback).
     Retries failed samples up to max_retries times.
     """
     results = []
@@ -260,7 +359,7 @@ class CheckpointManager:
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 
-def main():
+async def async_main():
     parser = argparse.ArgumentParser(description="Generate CoT financial sentiment data")
     parser.add_argument("--model", default="Qwen/Qwen3-235B-A22B-FP8",
                         help="vLLM model name")
@@ -268,8 +367,10 @@ def main():
                         help="vLLM API base URL")
     parser.add_argument("--target-samples", type=int, default=50000,
                         help="Target number of samples to generate")
-    parser.add_argument("--batch-size", type=int, default=32,
-                        help="Samples per batch")
+    parser.add_argument("--batch-size", type=int, default=64,
+                        help="Samples per checkpoint batch")
+    parser.add_argument("--max-concurrent", type=int, default=16,
+                        help="Max concurrent API requests to vLLM")
     parser.add_argument("--checkpoint-dir", default="./checkpoints",
                         help="Directory for checkpoints and output")
     parser.add_argument("--temperature", type=float, default=0.4)
@@ -277,11 +378,12 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print("FinSent-CoT Data Generation v2")
+    print("FinSent-CoT Data Generation v2 (Async Concurrent)")
     print("=" * 70)
     print(f"Model: {args.model}")
     print(f"Target: {args.target_samples} samples")
     print(f"Batch size: {args.batch_size}")
+    print(f"Max concurrent requests: {args.max_concurrent}")
     print()
 
     # ─── Initialize W&B ─────────────────────────────────────────────────────
@@ -293,14 +395,15 @@ def main():
             "generator_model": args.model,
             "target_samples": args.target_samples,
             "batch_size": args.batch_size,
+            "max_concurrent": args.max_concurrent,
             "temperature": args.temperature,
             "seed": args.seed,
             "phase": "data_generation",
         },
     )
 
-    # Initialize
-    client = OpenAI(base_url=args.api_base, api_key="not-needed")
+    # Initialize async client
+    async_client = AsyncOpenAI(base_url=args.api_base, api_key="not-needed")
     ckpt = CheckpointManager(args.checkpoint_dir)
 
     # Load source data
@@ -356,14 +459,21 @@ def main():
 
         batch_num = (batch_start // args.batch_size) + 1
         total_batches = (total + args.batch_size - 1) // args.batch_size
-        print(f"\n[Batch {batch_num}/{total_batches}] Generating {len(batch)} samples...")
+        print(f"\n[Batch {batch_num}/{total_batches}] Generating {len(batch)} samples "
+              f"({args.max_concurrent} concurrent)...")
 
-        results = generate_cot_batch(
-            client=client,
+        batch_start_time = time.time()
+
+        # Async concurrent generation
+        results = await generate_cot_batch_async(
+            client=async_client,
             model=args.model,
             samples=batch,
             temperature=args.temperature,
+            max_concurrent=args.max_concurrent,
         )
+
+        batch_elapsed = time.time() - batch_start_time
 
         # Update stats
         batch_valid = 0
@@ -396,12 +506,13 @@ def main():
         elapsed = time.time() - start_time
         samples_done = batch_end - start_idx
         rate = samples_done / elapsed if elapsed > 0 else 0
+        batch_rate = len(batch) / batch_elapsed if batch_elapsed > 0 else 0
         eta = (total - batch_end) / rate if rate > 0 else 0
         valid_pct = (stats["valid"] / stats["total"] * 100) if stats["total"] > 0 else 0
 
         print(f"  Progress: {batch_end}/{total} ({batch_end/total*100:.1f}%)")
         print(f"  Valid: {stats['valid']}/{stats['total']} ({valid_pct:.1f}%)")
-        print(f"  Rate: {rate:.1f} samples/sec | ETA: {eta/3600:.1f}h")
+        print(f"  Batch: {batch_rate:.1f} samples/sec | Overall: {rate:.1f} samples/sec | ETA: {eta/3600:.1f}h")
 
         # ─── Log batch metrics to W&B ───────────────────────────────────────
         wandb.log({
@@ -416,6 +527,7 @@ def main():
             "retried_total": stats["retried"],
             # Batch-level metrics
             "batch_valid_rate": batch_valid / len(results) * 100 if results else 0,
+            "batch_rate_samples_per_sec": batch_rate,
             # Speed
             "generation_rate_samples_per_sec": rate,
             "eta_hours": eta / 3600,
@@ -486,6 +598,10 @@ def main():
         wandb.log({"sample_examples": sample_table})
 
     wandb.finish()
+
+
+def main():
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":
