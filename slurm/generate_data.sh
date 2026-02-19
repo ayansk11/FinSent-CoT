@@ -143,7 +143,8 @@ python data_generation/generate_cot_v2.py \
     --model "Qwen/Qwen3-235B-A22B-FP8" \
     --api-base "http://localhost:8000/v1" \
     --target-samples 50000 \
-    --batch-size 32 \
+    --batch-size 64 \
+    --max-concurrent 16 \
     --checkpoint-dir ./checkpoints/datagen \
     --temperature 0.4
 
