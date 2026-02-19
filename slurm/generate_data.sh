@@ -66,20 +66,26 @@ mkdir -p "$WANDB_DIR"
 # vLLM >= 0.9 has broken MoE kernels (_moe_C topk_softmax bug).
 # Qwen team recommends vLLM >= 0.8.5 for Qwen3-235B-A22B.
 # vLLM 0.8.5 requires torch 2.6.0 — incompatible with our main venv (torch 2.9.0).
+# CRITICAL: transformers 5.x removed all_special_tokens_extended which vLLM 0.8.5
+# depends on. Must pin transformers<5.0.0 to avoid AttributeError crash.
 VLLM_VENV=/N/scratch/ayshaikh/vllm_venv
-if [ ! -f "$VLLM_VENV/bin/activate" ]; then
-    echo "[$(date)] Creating vLLM venv (one-time setup)..."
+VLLM_MARKER="$VLLM_VENV/.venv_ok_v2"
+if [ ! -f "$VLLM_MARKER" ]; then
+    echo "[$(date)] Creating/rebuilding vLLM venv..."
+    rm -rf "$VLLM_VENV"
     python -m venv "$VLLM_VENV"
     source "$VLLM_VENV/bin/activate"
     pip install --upgrade pip
-    echo "[$(date)] Installing vLLM 0.8.5 (this may take a few minutes)..."
-    pip install vllm==0.8.5
+    echo "[$(date)] Installing vLLM 0.8.5 + pinned transformers (this may take a few minutes)..."
+    pip install "vllm==0.8.5" "transformers>=4.51.1,<5.0.0"
+    touch "$VLLM_MARKER"
     echo "[$(date)] vLLM venv ready!"
 else
     echo "[$(date)] Using existing vLLM venv..."
     source "$VLLM_VENV/bin/activate"
-    # Verify vLLM is installed
+    # Verify versions
     python -c "import vllm; print(f'vLLM version: {vllm.__version__}')"
+    python -c "import transformers; print(f'transformers version: {transformers.__version__}')"
 fi
 
 # ─── Start vLLM server with Qwen3-235B-A22B-FP8 (4x H100 tensor parallel) ─
