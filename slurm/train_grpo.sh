@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=80G
-#SBATCH --time=10:00:00
+#SBATCH --time=14:00:00
 #SBATCH --output=logs/grpo_%j.out
 #SBATCH --error=logs/grpo_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu
@@ -15,16 +15,31 @@
 #SBATCH --exclusive
 
 # ============================================================
-# GRPO Training: up to 3000 steps with early stopping
-# 4 equal-weight reward functions, patience-based convergence
+# GRPO Training: Parameterized multi-model RL optimization
+# 4 equal-weight reward functions, early stopping
+#
+# Usage:
+#   sbatch slurm/train_grpo.sh qwen3-4b
+#   sbatch slurm/train_grpo.sh mobilellm-r1-950m
+#   sbatch slurm/train_grpo.sh qwen3-8b
+#
+# Available model keys:
+#   qwen3-0.6b, qwen3-1.7b, qwen3-4b, qwen3-8b,
+#   deepseek-r1-1.5b, mobilellm-r1-950m
 # ============================================================
 
 set -euo pipefail
 
+# Force unbuffered Python output
+export PYTHONUNBUFFERED=1
+
+# ─── Get model key from argument ────────────────────────────────────────────
+MODEL_KEY="${1:-qwen3-4b}"
 echo "=== Job Info ==="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
 echo "GPUs: $SLURM_GPUS_ON_NODE"
+echo "Model: $MODEL_KEY"
 echo "Start: $(date)"
 echo "================"
 
@@ -50,7 +65,7 @@ source venv/bin/activate
 mkdir -p logs
 
 # ─── Ensure training deps are installed (needs GPU node) ──────────────────
-pip install unsloth trl --quiet 2>/dev/null || true
+pip install unsloth trl peft bitsandbytes --quiet 2>/dev/null || true
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
@@ -63,17 +78,12 @@ export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
 # ─── Run GRPO training ─────────────────────────────────────────────────────
-echo "[$(date)] Starting GRPO training..."
+echo "[$(date)] Starting GRPO training for $MODEL_KEY..."
 python training/train_grpo.py \
-    --sft-checkpoint ./checkpoints/sft \
+    --model-key "$MODEL_KEY" \
+    --sft-checkpoint "./checkpoints/sft/$MODEL_KEY" \
     --dataset-dir ./validated \
-    --output-dir ./checkpoints/grpo \
-    --max-steps 3000 \
-    --batch-size 4 \
-    --lr 5e-5 \
-    --num-generations 6 \
-    --max-completion-length 512 \
-    --eval-steps 50 \
+    --output-dir "./checkpoints/grpo/$MODEL_KEY" \
     --early-stop-patience 10 \
     --early-stop-min-delta 0.01 \
     --early-stop-warmup 200
@@ -81,5 +91,6 @@ python training/train_grpo.py \
 GRPO_EXIT=$?
 echo ""
 echo "End: $(date)"
+echo "Model: $MODEL_KEY"
 echo "GRPO training exit code: $GRPO_EXIT"
 exit $GRPO_EXIT

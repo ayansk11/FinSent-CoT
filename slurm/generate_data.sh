@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=200G
-#SBATCH --time=12:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/datagen_%j.out
 #SBATCH --error=logs/datagen_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu
@@ -24,6 +24,9 @@
 # ============================================================
 
 set -euo pipefail
+
+# Force unbuffered Python output so progress appears in SLURM logs in real-time
+export PYTHONUNBUFFERED=1
 
 echo "=== Job Info ==="
 echo "Job ID: $SLURM_JOB_ID"

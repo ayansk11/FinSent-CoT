@@ -1,7 +1,8 @@
 """
 Multi-source financial sentiment dataset loading.
-Combines FinGPT, FiQA, Financial PhraseBank, and SEC headlines
-into a balanced, deduplicated dataset for CoT generation.
+Combines 6 sources: FinGPT, FiQA, Financial PhraseBank, Financial Tweets,
+Twitter Financial News, and Kaggle Financial Sentiment into a balanced,
+deduplicated dataset for CoT generation.
 
 IMPORTANT: This module NEVER oversamples. It only returns unique texts.
 Balancing/oversampling is handled post-generation by validate_dataset.py.
@@ -98,6 +99,88 @@ def load_financial_phrasebank() -> list[FinancialSample]:
     return samples
 
 
+def load_financial_tweets() -> list[FinancialSample]:
+    """
+    Load TimKoornstra financial tweets sentiment dataset.
+    Aggregates 9 sub-sources: FIQA, Stock Market Tweets, Twitter Financial News,
+    Crypto Sentiment, Stock Related Tweets, etc. ~38K samples.
+    Labels: 0=neutral, 1=bullish(positive), 2=bearish(negative)
+    """
+    print("[sources] Loading Financial Tweets Sentiment...")
+    try:
+        ds = load_dataset("TimKoornstra/financial-tweets-sentiment", split="train")
+    except Exception:
+        print("  -> Financial Tweets not available, skipping")
+        return []
+
+    label_map = {0: "neutral", 1: "positive", 2: "negative"}
+    samples = []
+    for row in ds:
+        text = row.get("tweet", "").strip()
+        label_id = row.get("sentiment", None)
+        if label_id is None or not text or len(text.split()) < 5:
+            continue
+        label = label_map.get(label_id)
+        if label:
+            samples.append(FinancialSample(text=text, label=label, source="fin_tweets"))
+    print(f"  -> {len(samples)} samples loaded")
+    return samples
+
+
+def load_twitter_financial_news() -> list[FinancialSample]:
+    """
+    Load Twitter Financial News Sentiment dataset.
+    ~12K samples of financial news tweets.
+    Labels: 0=Bearish(negative), 1=Bullish(positive), 2=Neutral
+    Note: Partially overlaps with FinGPT — dedup handles this.
+    """
+    print("[sources] Loading Twitter Financial News Sentiment...")
+    try:
+        ds = load_dataset("zeroshot/twitter-financial-news-sentiment", split="train")
+    except Exception:
+        print("  -> Twitter Financial News not available, skipping")
+        return []
+
+    label_map = {0: "negative", 1: "positive", 2: "neutral"}
+    samples = []
+    for row in ds:
+        text = row.get("text", "").strip()
+        label_id = row.get("label", None)
+        if label_id is None or not text or len(text.split()) < 5:
+            continue
+        label = label_map.get(label_id)
+        if label:
+            samples.append(FinancialSample(text=text, label=label, source="tfns"))
+    print(f"  -> {len(samples)} samples loaded")
+    return samples
+
+
+def load_kaggle_financial_sentiment() -> list[FinancialSample]:
+    """
+    Load Kaggle Financial Sentiment dataset.
+    ~5.8K samples of mixed news + social media financial text.
+    Labels are already string: positive, negative, neutral.
+    """
+    print("[sources] Loading Kaggle Financial Sentiment...")
+    try:
+        ds = load_dataset("chiapudding/kaggle-financial-sentiment", split="train")
+    except Exception:
+        print("  -> Kaggle Financial Sentiment not available, skipping")
+        return []
+
+    samples = []
+    for row in ds:
+        text = row.get("Sentence", "").strip()
+        label = row.get("Sentiment", "").strip().lower()
+        if label not in ("positive", "negative", "neutral"):
+            continue
+        if not text or len(text.split()) < 5:
+            continue
+        samples.append(FinancialSample(text=text, label=label, source="kaggle_fin"))
+    print(f"  -> {len(samples)} samples loaded")
+    return samples
+
+
 def load_all_sources(
     target_total: int = 50000,
     balance: bool = True,
@@ -122,11 +205,14 @@ def load_all_sources(
     """
     random.seed(seed)
 
-    # Load all sources
+    # Load all sources (6 datasets)
     all_samples = []
     all_samples.extend(load_fingpt())
     all_samples.extend(load_fiqa())
     all_samples.extend(load_financial_phrasebank())
+    all_samples.extend(load_financial_tweets())
+    all_samples.extend(load_twitter_financial_news())
+    all_samples.extend(load_kaggle_financial_sentiment())
 
     # Deduplicate by text hash
     seen_hashes = set()

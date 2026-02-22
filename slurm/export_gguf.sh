@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/export_%j.out
 #SBATCH --error=logs/export_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu
@@ -15,15 +15,30 @@
 #SBATCH --exclusive
 
 # ============================================================
-# Export: Dual GGUF (Q5_K_M + Q4_K_M) + HuggingFace upload
+# Export: 3 GGUF quantizations (Q4_K_M, Q5_K_M, Q8_0)
+# Each quant goes to its own HuggingFace repo
+#
+# Usage:
+#   sbatch slurm/export_gguf.sh qwen3-4b
+#   sbatch slurm/export_gguf.sh mobilellm-r1-950m
+#
+# Available model keys:
+#   qwen3-0.6b, qwen3-1.7b, qwen3-4b, qwen3-8b,
+#   deepseek-r1-1.5b, mobilellm-r1-950m
 # ============================================================
 
 set -euo pipefail
 
+# Force unbuffered Python output
+export PYTHONUNBUFFERED=1
+
+# ─── Get model key from argument ────────────────────────────────────────────
+MODEL_KEY="${1:-qwen3-4b}"
 echo "=== Job Info ==="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
 echo "GPUs: $SLURM_GPUS_ON_NODE"
+echo "Model: $MODEL_KEY"
 echo "Start: $(date)"
 echo "================"
 
@@ -61,55 +76,17 @@ export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
-# ─── Export to GGUF (both Q5_K_M and Q4_K_M) ─────────────────────────────
-echo "[$(date)] Starting dual GGUF export..."
+# ─── Export to GGUF (Q4_K_M + Q5_K_M + Q8_0) + HF upload ──────────────
+echo "[$(date)] Starting GGUF export for $MODEL_KEY..."
 python training/export_gguf.py \
-    --grpo-checkpoint ./checkpoints/grpo \
-    --output-dir ./export \
-    --model-name FinSent-CoT-Qwen3-4B
+    --model-key "$MODEL_KEY" \
+    --grpo-checkpoint "./checkpoints/grpo/$MODEL_KEY" \
+    --output-dir "./export/$MODEL_KEY" \
+    --upload
 
 EXPORT_EXIT=$?
-echo "[$(date)] Export complete! Exit code: $EXPORT_EXIT"
-
-# ─── Upload to HuggingFace ─────────────────────────────────────────────────
-if [ $EXPORT_EXIT -eq 0 ]; then
-    echo "[$(date)] Uploading to HuggingFace..."
-    python -c "
-from huggingface_hub import HfApi
-api = HfApi()
-
-# Upload both GGUF quantizations
-for quant in ['Q5_K_M', 'Q4_K_M']:
-    fname = f'FinSent-CoT-Qwen3-4B.{quant}.gguf'
-    api.upload_file(
-        path_or_fileobj=f'./export/{fname}',
-        path_in_repo=fname,
-        repo_id='Ayansk11/FinSent-CoT-Qwen3-4B',
-        repo_type='model',
-    )
-    print(f'  Uploaded {fname}')
-
-# Upload Modelfile (points to Q5_K_M by default)
-api.upload_file(
-    path_or_fileobj='./export/Modelfile',
-    path_in_repo='Modelfile',
-    repo_id='Ayansk11/FinSent-CoT-Qwen3-4B',
-    repo_type='model',
-)
-
-# Upload merged HF weights
-api.upload_folder(
-    folder_path='./export/merged_hf',
-    repo_id='Ayansk11/FinSent-CoT-Qwen3-4B',
-    repo_type='model',
-)
-
-print('HuggingFace upload complete!')
-"
-    echo "[$(date)] Upload complete!"
-fi
-
 echo ""
 echo "End: $(date)"
-echo "Exit code: $EXPORT_EXIT"
+echo "Model: $MODEL_KEY"
+echo "Export exit code: $EXPORT_EXIT"
 exit $EXPORT_EXIT

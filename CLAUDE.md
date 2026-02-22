@@ -45,10 +45,13 @@ FinSent-CoT/
 - **Scratch**: `/N/scratch/ayshaikh` (large, use for everything)
 - **Modules**: `module load python/gpu/3.11.5` + `module load cudatoolkit/12.1`
 
-### CRITICAL: Cluster Selection
-- **Big Red 200**: `ssh ayshaikh@bigred200.uits.iu.edu` — has `gpu` (A100) + `hopper` (H100) partitions
-- **Quartz**: `ssh ayshaikh@quartz.uits.iu.edu` — has `gpu` (V100) only, NO hopper partition
-- **Always submit hopper jobs from Big Red 200 login node**, NOT from Quartz
+### Cluster & Partition Info
+- **Quartz** (`ssh ayshaikh@quartz.uits.iu.edu`): Login nodes `h1`/`h2`. Shell prompt misleadingly shows `BigRed200`.
+- Quartz SLURM can submit to **both** `gpu` (V100) and `hopper` (H100) partitions
+- **Hopper partition**: 12 nodes (g25-g36), 4x H100 80GB each, 515GB RAM/node
+- **GPU partition**: 22 nodes (g3-g24), 4x V100 32GB each, 772GB RAM/node
+- Confirmed: hopper jobs submitted from Quartz `h1`/`h2` run successfully on H100 nodes
+- SLURM email sender: `slurm@s1.quartz.uits.iu.edu`
 
 ## Critical: Cache Directory Redirect
 All SLURM scripts MUST redirect caches to scratch:
@@ -117,3 +120,15 @@ sbatch slurm/export_gguf.sh
 - wandb (experiment tracking)
 - datasets, transformers, huggingface_hub
 - llama-cpp-python (GGUF conversion)
+
+## Prerequisites Before Submitting Jobs
+- `logs/` directory must exist: `mkdir -p /N/scratch/ayshaikh/FinSent-CoT/logs`
+- Main project venv at `/N/scratch/ayshaikh/FinSent-CoT/venv/` needs: `openai`, `wandb`, `datasets`
+- vLLM venv at `/N/scratch/ayshaikh/vllm_venv/` is auto-created on first datagen run
+- `.tokens` file at `/N/scratch/ayshaikh/.tokens` must have `HF_TOKEN` and `WANDB_API_KEY`
+
+## Job History
+| Job ID | Cluster | Script | Status | Notes |
+|--------|---------|--------|--------|-------|
+| 8105794 | Quartz | generate_data.sh | FAILED (exit 1) | transformers 5.x broke vLLM 0.8.5 tokenizer (all_special_tokens_extended removed) |
+| 8113758 | Quartz | generate_data.sh | FAILED (exit 1) | Same bug — ran on hopper node g30 but vLLM crashed on tokenizer init |

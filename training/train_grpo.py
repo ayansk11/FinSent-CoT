@@ -1,17 +1,21 @@
 """
-GRPO Training for FinSent-CoT.
+GRPO Training for FinSent-CoT — Multi-Model.
 
-Trains Qwen3-4B with Group Relative Policy Optimization using 4 equal-weight
-reward functions for sentiment correctness, format compliance, reasoning quality,
-and reasoning-answer consistency.
+Trains any of the 6 supported models with Group Relative Policy Optimization
+using 4 equal-weight reward functions for sentiment correctness, format
+compliance, reasoning quality, and reasoning-answer consistency.
 
 Features:
 - Early stopping on reward convergence (with full W&B evidence logging)
 - Max steps set high (3000) — training stops when rewards plateau
 - All 4 reward signals tracked individually per step
+- Auto-adjusts batch size, num_generations, LoRA config per model
+
+Models 1-5 use Unsloth QLoRA. Model 6 (MobileLLM) uses standard PEFT.
 
 Usage:
-    python train_grpo.py --sft-checkpoint ./checkpoints/sft --dataset-dir ./validated
+    python train_grpo.py --model-key qwen3-4b --sft-checkpoint ./checkpoints/sft/qwen3-4b
+    python train_grpo.py --model-key mobilellm-r1-950m --sft-checkpoint ./checkpoints/sft/mobilellm-r1-950m
 """
 
 import argparse
@@ -24,10 +28,10 @@ from pathlib import Path
 import torch
 import wandb
 from datasets import Dataset
-from transformers import AutoTokenizer, TrainerCallback
+from transformers import TrainerCallback
 from trl import GRPOConfig, GRPOTrainer
-from unsloth import FastLanguageModel
 
+from model_configs import get_config, resolve_model_key, ALL_MODEL_KEYS
 from rewards import (
     consistency_reward,
     format_compliance_reward,
@@ -58,18 +62,10 @@ class RewardEarlyStoppingCallback(TrainerCallback):
     """
 
     def __init__(self, patience: int = 10, min_delta: float = 0.01, warmup_steps: int = 200):
-        """
-        Args:
-            patience: Number of consecutive eval steps without improvement before stopping.
-            min_delta: Minimum reward improvement to count as "not plateaued".
-            warmup_steps: Don't check for early stopping before this many steps
-                          (let the model warm up first).
-        """
         self.patience = patience
         self.min_delta = min_delta
         self.warmup_steps = warmup_steps
 
-        # Tracking state
         self.best_reward = float("-inf")
         self.best_reward_step = 0
         self.no_improve_count = 0
@@ -81,15 +77,11 @@ class RewardEarlyStoppingCallback(TrainerCallback):
         if logs is None:
             return
 
-        # TRL GRPOTrainer logs reward metrics as "reward" or individual reward function names
-        # Look for any reward-related key
         reward_keys = [k for k in logs if "reward" in k.lower()]
         if not reward_keys:
             return
 
         step = state.global_step
-
-        # Compute mean reward across all reward functions
         reward_vals = [logs[k] for k in reward_keys if isinstance(logs.get(k), (int, float))]
         if not reward_vals:
             return
@@ -101,7 +93,6 @@ class RewardEarlyStoppingCallback(TrainerCallback):
             "individual_rewards": {k: logs[k] for k in reward_keys if isinstance(logs.get(k), (int, float))},
         })
 
-        # Log individual reward tracking to W&B
         wandb.log({
             "early_stop/mean_reward": mean_reward,
             "early_stop/best_reward": self.best_reward,
@@ -109,11 +100,9 @@ class RewardEarlyStoppingCallback(TrainerCallback):
             "early_stop/patience_remaining": self.patience - self.no_improve_count,
         }, step=step)
 
-        # Don't check before warmup
         if step < self.warmup_steps:
             return
 
-        # Check for improvement
         if mean_reward > self.best_reward + self.min_delta:
             self.best_reward = mean_reward
             self.best_reward_step = step
@@ -121,7 +110,6 @@ class RewardEarlyStoppingCallback(TrainerCallback):
         else:
             self.no_improve_count += 1
 
-        # Check if we should stop
         if self.no_improve_count >= self.patience:
             self.should_stop = True
             self.stop_reason = (
@@ -148,10 +136,8 @@ class RewardEarlyStoppingCallback(TrainerCallback):
         }
         wandb.summary.update(evidence)
 
-        # Log full reward trajectory as a table
         if self.reward_history:
             columns = ["step", "mean_reward"]
-            # Get all individual reward keys from first entry
             if self.reward_history[0].get("individual_rewards"):
                 individual_keys = sorted(self.reward_history[0]["individual_rewards"].keys())
                 columns.extend(individual_keys)
@@ -166,15 +152,10 @@ class RewardEarlyStoppingCallback(TrainerCallback):
                 rows.append(row)
 
             wandb.log({
-                "early_stop/reward_trajectory": wandb.Table(
-                    columns=columns,
-                    data=rows,
-                ),
+                "early_stop/reward_trajectory": wandb.Table(columns=columns, data=rows),
             })
 
-        # Log the convergence analysis
         if len(self.reward_history) >= 10:
-            # Compare first 10% vs last 10% of rewards
             n = len(self.reward_history)
             first_10pct = self.reward_history[:max(n // 10, 1)]
             last_10pct = self.reward_history[-max(n // 10, 1):]
@@ -186,6 +167,89 @@ class RewardEarlyStoppingCallback(TrainerCallback):
                 "early_stop/last_10pct_mean_reward": last_mean,
                 "early_stop/total_reward_improvement": last_mean - first_mean,
             })
+
+
+# ─── Model Loading ────────────────────────────────────────────────────────────
+
+def load_model_unsloth(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int, max_seq: int):
+    """Load SFT checkpoint with Unsloth, add fresh LoRA for GRPO."""
+    from unsloth import FastLanguageModel
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=sft_checkpoint,
+        max_seq_length=max_seq,
+        dtype=None,
+        load_in_4bit=True,
+    )
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=lora_r,
+        target_modules=config["target_modules"],
+        lora_alpha=lora_alpha,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing="unsloth",
+    )
+
+    return model, tokenizer
+
+
+def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int):
+    """Load SFT checkpoint with standard PEFT for GRPO."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        sft_checkpoint,
+        trust_remote_code=True,
+    )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # Try loading as PEFT checkpoint first, fallback to standard model
+    try:
+        from peft import AutoPeftModelForCausalLM
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            sft_checkpoint,
+            quantization_config=bnb_config,
+            device_map="auto",
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
+        # Merge SFT adapters, then add fresh GRPO LoRA
+        model = model.merge_and_unload()
+        model = prepare_model_for_kbit_training(model)
+    except Exception:
+        model = AutoModelForCausalLM.from_pretrained(
+            sft_checkpoint,
+            quantization_config=bnb_config,
+            device_map="auto",
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
+        model = prepare_model_for_kbit_training(model)
+
+    lora_config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=config["target_modules"],
+        lora_dropout=0,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+    return model, tokenizer
 
 
 # ─── Dataset Loading ─────────────────────────────────────────────────────────
@@ -200,7 +264,6 @@ def load_grpo_dataset(dataset_dir: str) -> Dataset:
             if line.strip():
                 samples.append(json.loads(line))
 
-    # Convert to chat format for GRPO
     formatted = []
     for s in samples:
         formatted.append({
@@ -208,7 +271,7 @@ def load_grpo_dataset(dataset_dir: str) -> Dataset:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": s["prompt"]},
             ],
-            "answer": s["label"],  # Ground truth for reward computation
+            "answer": s["label"],
         })
 
     print(f"Loaded {len(formatted)} training samples")
@@ -218,50 +281,83 @@ def load_grpo_dataset(dataset_dir: str) -> Dataset:
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="GRPO training for FinSent-CoT")
+    parser = argparse.ArgumentParser(description="GRPO training for FinSent-CoT (multi-model)")
+    parser.add_argument("--model-key", required=True,
+                        help=f"Model key: {', '.join(ALL_MODEL_KEYS)}")
     parser.add_argument("--sft-checkpoint", required=True,
                         help="Path to SFT checkpoint")
     parser.add_argument("--dataset-dir", default="./validated",
                         help="Directory with validated GRPO data")
-    parser.add_argument("--output-dir", default="./checkpoints/grpo",
-                        help="Output directory for GRPO checkpoint")
-    parser.add_argument("--max-steps", type=int, default=3000,
-                        help="Max training steps (will early stop before this)")
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--num-generations", type=int, default=6,
-                        help="Number of generations per prompt for GRPO")
-    parser.add_argument("--max-completion-length", type=int, default=512)
+    parser.add_argument("--output-dir", default=None,
+                        help="Output directory (default: ./checkpoints/grpo/<model-key>)")
+    # Override config defaults via CLI
+    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--num-generations", type=int, default=None)
+    parser.add_argument("--max-completion-length", type=int, default=None)
     parser.add_argument("--eval-steps", type=int, default=50)
+    parser.add_argument("--lora-r", type=int, default=None)
+    parser.add_argument("--lora-alpha", type=int, default=None)
     # Early stopping args
-    parser.add_argument("--early-stop-patience", type=int, default=10,
-                        help="Eval windows without improvement before stopping")
-    parser.add_argument("--early-stop-min-delta", type=float, default=0.01,
-                        help="Minimum reward improvement to count as progress")
-    parser.add_argument("--early-stop-warmup", type=int, default=200,
-                        help="Steps before early stopping can trigger")
+    parser.add_argument("--early-stop-patience", type=int, default=10)
+    parser.add_argument("--early-stop-min-delta", type=float, default=0.01)
+    parser.add_argument("--early-stop-warmup", type=int, default=200)
     args = parser.parse_args()
 
+    # Resolve model
+    model_key = resolve_model_key(args.model_key)
+    config = get_config(model_key)
+    grpo_cfg = config["grpo"]
+
+    # Apply overrides
+    max_steps = args.max_steps or grpo_cfg["max_steps"]
+    batch_size = args.batch_size or grpo_cfg["batch_size"]
+    lr = args.lr or grpo_cfg["lr"]
+    num_generations = args.num_generations or grpo_cfg["num_generations"]
+    max_completion_length = args.max_completion_length or grpo_cfg["max_completion_length"]
+    lora_r = args.lora_r or grpo_cfg["lora_r"]
+    lora_alpha = args.lora_alpha or grpo_cfg["lora_alpha"]
+    grad_accum = grpo_cfg["grad_accum"]
+    max_seq_length = config["max_seq_length"]
+    output_dir = args.output_dir or f"./checkpoints/grpo/{model_key}"
+
     print("=" * 70)
-    print("FinSent-CoT GRPO Training (with Early Stopping)")
+    print(f"FinSent-CoT GRPO Training — {config['short_name']} (with Early Stopping)")
     print("=" * 70)
+    print(f"  Model key:       {model_key}")
+    print(f"  SFT checkpoint:  {args.sft_checkpoint}")
+    print(f"  Backend:         {'Unsloth QLoRA' if config['use_unsloth'] else 'PEFT + bitsandbytes'}")
+    print(f"  LoRA r={lora_r}, alpha={lora_alpha}")
+    print(f"  Batch: {batch_size} x {grad_accum} = {batch_size * grad_accum} effective")
+    print(f"  LR: {lr}")
+    print(f"  Generations/prompt: {num_generations}")
+    print(f"  Max steps: {max_steps}")
+    print(f"  Early stop: patience={args.early_stop_patience}, delta={args.early_stop_min_delta}")
+    print(f"  Output: {output_dir}")
+    print()
 
     # ─── Initialize W&B ─────────────────────────────────────────────────────
     wandb.init(
         project="FinSent-CoT",
-        name=f"grpo-max{args.max_steps}-lr{args.lr}-es",
-        tags=["grpo", "rl", "training", "early-stopping"],
+        name=f"grpo-{config['short_name']}-max{max_steps}-es",
+        tags=["grpo", "rl", "training", "early-stopping", model_key, config["model_family"]],
         config={
             "phase": "grpo_training",
+            "model_key": model_key,
+            "base_model": config["base_model"],
+            "model_family": config["model_family"],
+            "use_unsloth": config["use_unsloth"],
             "sft_checkpoint": args.sft_checkpoint,
-            "max_steps": args.max_steps,
-            "batch_size": args.batch_size,
-            "effective_batch_size": args.batch_size * 2,
-            "learning_rate": args.lr,
-            "num_generations": args.num_generations,
-            "max_completion_length": args.max_completion_length,
-            "lora_r": 32,
-            "lora_alpha": 64,
+            "max_steps": max_steps,
+            "batch_size": batch_size,
+            "grad_accum": grad_accum,
+            "effective_batch_size": batch_size * grad_accum,
+            "learning_rate": lr,
+            "num_generations": num_generations,
+            "max_completion_length": max_completion_length,
+            "lora_r": lora_r,
+            "lora_alpha": lora_alpha,
             "scheduler": "cosine",
             "warmup_ratio": 0.1,
             "early_stopping": {
@@ -280,45 +376,35 @@ def main():
     )
 
     # Load model from SFT checkpoint
-    print(f"\nLoading model from {args.sft_checkpoint}...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=args.sft_checkpoint,
-        max_seq_length=2048,
-        dtype=None,
-        load_in_4bit=True,
-    )
-
-    # Add LoRA
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=32,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
-        lora_alpha=64,
-        lora_dropout=0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-    )
+    print(f"\nLoading {config['short_name']} from {args.sft_checkpoint}...")
+    if config["use_unsloth"]:
+        model, tokenizer = load_model_unsloth(
+            args.sft_checkpoint, config, lora_r, lora_alpha, max_seq_length
+        )
+    else:
+        model, tokenizer = load_model_peft(
+            args.sft_checkpoint, config, lora_r, lora_alpha
+        )
 
     # Load dataset
     dataset = load_grpo_dataset(args.dataset_dir)
 
     # GRPO config
-    config = GRPOConfig(
-        output_dir=args.output_dir,
-        max_steps=args.max_steps,
-        per_device_train_batch_size=args.batch_size,
-        learning_rate=args.lr,
+    grpo_training_config = GRPOConfig(
+        output_dir=output_dir,
+        max_steps=max_steps,
+        per_device_train_batch_size=batch_size,
+        learning_rate=lr,
         lr_scheduler_type="cosine",
         warmup_ratio=0.1,
-        num_generations=args.num_generations,
-        max_completion_length=args.max_completion_length,
+        num_generations=num_generations,
+        max_completion_length=max_completion_length,
         max_prompt_length=512,
         logging_steps=10,
         save_steps=args.eval_steps,
         save_total_limit=5,
         bf16=True,
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=grad_accum,
         report_to="wandb",
         run_name=wandb.run.name if wandb.run else "grpo-run",
         seed=42,
@@ -334,7 +420,7 @@ def main():
     # Build trainer with all 4 reward functions + early stopping
     trainer = GRPOTrainer(
         model=model,
-        config=config,
+        config=grpo_training_config,
         train_dataset=dataset,
         tokenizer=tokenizer,
         reward_funcs=[
@@ -347,13 +433,6 @@ def main():
     )
 
     print(f"\nStarting GRPO training...")
-    print(f"  Max steps: {args.max_steps} (with early stopping)")
-    print(f"  Early stop patience: {args.early_stop_patience} eval windows")
-    print(f"  Early stop min delta: {args.early_stop_min_delta}")
-    print(f"  Early stop warmup: {args.early_stop_warmup} steps")
-    print(f"  Batch size: {args.batch_size}")
-    print(f"  LR: {args.lr}")
-    print(f"  Generations per prompt: {args.num_generations}")
     print(f"  Reward functions: 4 (correctness, format, reasoning, consistency)")
     print()
 
@@ -362,21 +441,19 @@ def main():
     training_time = time.time() - start_time
 
     # Save final checkpoint
-    print(f"\nSaving GRPO checkpoint to {args.output_dir}...")
-    trainer.save_model(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
+    print(f"\nSaving GRPO checkpoint to {output_dir}...")
+    trainer.save_model(output_dir)
+    tokenizer.save_pretrained(output_dir)
 
     # ─── Log comprehensive evidence to W&B ───────────────────────────────────
     actual_steps = trainer.state.global_step
-
-    # Log early stopping evidence
     early_stop_callback.log_evidence_to_wandb()
 
-    # Log training summary
     summary = {
+        "model_key": model_key,
         "actual_steps": actual_steps,
-        "max_steps": args.max_steps,
-        "steps_saved": args.max_steps - actual_steps,
+        "max_steps": max_steps,
+        "steps_saved": max_steps - actual_steps,
         "training_time_hours": training_time / 3600,
         "dataset_size": len(dataset),
         "early_stopped": early_stop_callback.should_stop,
@@ -388,19 +465,21 @@ def main():
 
     wandb.summary.update(summary)
 
-    # Log human-readable training report
+    # Print human-readable report
     report_lines = [
         "=" * 70,
-        "GRPO TRAINING REPORT",
+        f"GRPO TRAINING REPORT — {config['short_name']}",
         "=" * 70,
-        f"Actual steps completed: {actual_steps} / {args.max_steps}",
-        f"Steps saved by early stopping: {args.max_steps - actual_steps}",
+        f"Actual steps completed: {actual_steps} / {max_steps}",
+        f"Steps saved by early stopping: {max_steps - actual_steps}",
         f"Training time: {training_time/3600:.2f} hours",
         f"Early stopped: {early_stop_callback.should_stop}",
     ]
     if early_stop_callback.should_stop:
         report_lines.append(f"Stop reason: {early_stop_callback.stop_reason}")
-    report_lines.append(f"Best mean reward: {early_stop_callback.best_reward:.4f} at step {early_stop_callback.best_reward_step}")
+    report_lines.append(
+        f"Best mean reward: {early_stop_callback.best_reward:.4f} at step {early_stop_callback.best_reward_step}"
+    )
     report_text = "\n".join(report_lines)
     print(f"\n{report_text}")
 
@@ -410,7 +489,7 @@ def main():
     )})
 
     wandb.finish()
-    print("GRPO training complete!")
+    print(f"GRPO training complete for {config['short_name']}!")
 
 
 if __name__ == "__main__":
