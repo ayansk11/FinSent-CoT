@@ -2,6 +2,9 @@
 Multi-source financial sentiment dataset loading.
 Combines FinGPT, FiQA, Financial PhraseBank, and SEC headlines
 into a balanced, deduplicated dataset for CoT generation.
+
+IMPORTANT: This module NEVER oversamples. It only returns unique texts.
+Balancing/oversampling is handled post-generation by validate_dataset.py.
 """
 
 import hashlib
@@ -102,10 +105,15 @@ def load_all_sources(
 ) -> list[FinancialSample]:
     """
     Load and merge all financial sentiment sources.
-    Deduplicates by text hash and balances classes.
+    Deduplicates by text hash. NEVER oversamples — returns only unique texts.
+
+    If balance=True, caps each class at the size of the smallest class
+    (or target_total//3, whichever is smaller). This means the returned
+    dataset may be smaller than target_total if there aren't enough
+    unique samples, but every text is unique.
 
     Args:
-        target_total: Target number of samples (will be less if not enough unique data)
+        target_total: Target number of samples (cap, NOT an oversampling target)
         balance: Whether to balance classes equally
         seed: Random seed for reproducibility
 
@@ -139,27 +147,30 @@ def load_all_sources(
         print(f"  {label}: {len(items)}")
 
     if not balance:
+        # Return all unique samples up to target
         random.shuffle(unique_samples)
-        return unique_samples[:target_total]
+        result = unique_samples[:target_total]
+        print(f"\n[sources] Returning {len(result)} unique samples (unbalanced)")
+        return result
 
-    # Balance: take equal from each class
-    per_class = target_total // 3
+    # Balance: take equal from each class, capped at smallest class
+    # NEVER oversample — if a class has fewer, that becomes the cap
+    per_class_target = target_total // 3
+    min_available = min(len(v) for v in by_label.values())
+    per_class = min(per_class_target, min_available)
+
+    print(f"\n[sources] Balance target: {per_class_target}/class")
+    print(f"[sources] Smallest class: {min_available}")
+    print(f"[sources] Using {per_class}/class (no oversampling)")
+
     balanced = []
     for label in ["positive", "negative", "neutral"]:
         pool = by_label[label]
         random.shuffle(pool)
-        # If not enough samples, take all and oversample
-        if len(pool) >= per_class:
-            balanced.extend(pool[:per_class])
-        else:
-            balanced.extend(pool)
-            # Oversample to fill
-            deficit = per_class - len(pool)
-            balanced.extend(random.choices(pool, k=deficit))
-            print(f"  WARNING: {label} oversampled by {deficit} to reach {per_class}")
+        balanced.extend(pool[:per_class])
 
     random.shuffle(balanced)
-    print(f"\n[sources] Final balanced dataset: {len(balanced)} samples")
+    print(f"[sources] Final balanced dataset: {len(balanced)} samples ({per_class} x 3)")
     return balanced
 
 
