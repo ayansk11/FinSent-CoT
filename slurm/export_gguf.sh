@@ -63,8 +63,12 @@ cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
 mkdir -p logs
 
-# ─── Ensure export deps are installed (needs GPU node) ────────────────────
-pip install unsloth --quiet 2>/dev/null || true
+# ─── Verify export deps are installed ─────────────────────────────────────
+# NOTE: Dependencies must be installed BEFORE submitting jobs.
+# Run: bash slurm/setup_env.sh   (once, on a GPU node)
+echo "Checking Python dependencies..."
+python -c "import torch; print(f'  PyTorch {torch.__version__}, CUDA {torch.cuda.is_available()}')"
+echo ""
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 if [ -f /N/scratch/ayshaikh/.tokens ]; then

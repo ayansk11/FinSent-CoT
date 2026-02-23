@@ -1,0 +1,173 @@
+#!/bin/bash
+# ============================================================
+# One-time environment setup for FinSent-CoT training.
+#
+# Run this ONCE on a GPU node BEFORE submitting training jobs.
+# It creates/updates the venv with all required dependencies.
+#
+# Usage (interactive GPU session):
+#   srun --account=r01510 --partition=hopper --qos=hopper \
+#        --gpus-per-node=1 --mem=32G --time=01:00:00 --pty bash
+#   bash slurm/setup_env.sh
+#
+# Usage (SLURM batch — if interactive isn't available):
+#   sbatch slurm/setup_env.sh
+# ============================================================
+#SBATCH --job-name=finsent-setup
+#SBATCH --account=r01510
+#SBATCH --partition=hopper
+#SBATCH --qos=hopper
+#SBATCH --nodes=1
+#SBATCH --gpus-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --output=logs/setup_%j.out
+#SBATCH --error=logs/setup_%j.err
+#SBATCH --mail-user=ayshaikh@iu.edu
+#SBATCH --mail-type=END,FAIL
+
+set -euo pipefail
+
+echo "=== FinSent-CoT Environment Setup ==="
+echo "Date: $(date)"
+echo "Node: $(hostname)"
+echo ""
+
+# ─── Cache redirect ──────────────────────────────────────────────────────
+export HF_HOME=/N/scratch/ayshaikh/.cache/huggingface
+export HF_HUB_CACHE=/N/scratch/ayshaikh/.cache/huggingface/hub
+export XDG_CACHE_HOME=/N/scratch/ayshaikh/.cache
+export TORCH_HOME=/N/scratch/ayshaikh/.cache/torch
+export TMPDIR=/N/scratch/ayshaikh/tmp
+export PIP_CACHE_DIR=/N/scratch/ayshaikh/.cache/pip
+mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" \
+         "$TMPDIR" "$PIP_CACHE_DIR"
+
+# ─── Load modules ────────────────────────────────────────────────────────
+module load python/gpu/3.11.5
+module load cudatoolkit/12.1
+
+cd /N/scratch/ayshaikh/FinSent-CoT
+mkdir -p logs
+
+# ─── Create or activate venv ─────────────────────────────────────────────
+if [ ! -d venv ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+fi
+source venv/bin/activate
+
+echo "Python: $(python --version)"
+echo "Pip: $(pip --version)"
+echo "Venv: $(which python)"
+echo ""
+
+# ─── Upgrade pip first ───────────────────────────────────────────────────
+pip install --upgrade pip setuptools wheel
+
+# ─── Install PyTorch (CUDA 12.1 compatible) ──────────────────────────────
+echo ""
+echo "=== Installing PyTorch ==="
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Verify CUDA
+python -c "
+import torch
+print(f'  PyTorch: {torch.__version__}')
+print(f'  CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'  CUDA version: {torch.version.cuda}')
+    print(f'  GPU: {torch.cuda.get_device_name(0)}')
+    print(f'  GPU memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB')
+else:
+    print('  WARNING: CUDA not available! Training will fail.')
+    exit(1)
+"
+
+# ─── Install training dependencies ───────────────────────────────────────
+echo ""
+echo "=== Installing training dependencies ==="
+pip install \
+    transformers \
+    datasets \
+    accelerate \
+    peft \
+    bitsandbytes \
+    trl \
+    wandb \
+    huggingface_hub \
+    sentencepiece \
+    protobuf
+
+# ─── Install Unsloth (AFTER torch + deps are stable) ────────────────────
+echo ""
+echo "=== Installing Unsloth ==="
+pip install "unsloth[cu121-torch250] @ git+https://github.com/unslothai/unsloth.git"
+
+# ─── Verify ALL dependencies ─────────────────────────────────────────────
+echo ""
+echo "=== Verifying installations ==="
+python << 'PYEOF'
+packages = {
+    'torch': 'import torch',
+    'transformers': 'import transformers',
+    'datasets': 'import datasets',
+    'accelerate': 'import accelerate',
+    'peft': 'import peft',
+    'bitsandbytes': 'import bitsandbytes',
+    'trl': 'from trl import SFTConfig',
+    'wandb': 'import wandb',
+    'huggingface_hub': 'import huggingface_hub',
+    'unsloth': 'from unsloth import FastLanguageModel',
+}
+
+all_ok = True
+for name, stmt in packages.items():
+    try:
+        exec(stmt)
+        print(f'  OK: {name}')
+    except Exception as e:
+        print(f'  FAIL: {name}: {e}')
+        all_ok = False
+
+if all_ok:
+    print()
+    print('All dependencies installed successfully!')
+else:
+    print()
+    print('WARNING: Some dependencies failed. Fix before submitting jobs.')
+    exit(1)
+PYEOF
+
+# ─── Verify training data exists ─────────────────────────────────────────
+echo ""
+echo "=== Checking training data ==="
+for f in validated/sft_train.jsonl validated/grpo_train.jsonl; do
+    if [ -f "$f" ]; then
+        lines=$(wc -l < "$f")
+        echo "  OK: $f ($lines lines)"
+    else
+        echo "  MISSING: $f"
+    fi
+done
+
+# ─── Verify model_configs import works ────────────────────────────────────
+echo ""
+echo "=== Checking training scripts ==="
+python << 'PYEOF'
+import sys
+sys.path.insert(0, 'training')
+from model_configs import MODEL_ORDER, get_config
+print(f'  model_configs: {len(MODEL_ORDER)} models configured')
+for key in MODEL_ORDER:
+    cfg = get_config(key)
+    print(f'    - {key}: {cfg["base_model"]}')
+PYEOF
+
+echo ""
+echo "=== Setup Complete ==="
+echo "Date: $(date)"
+echo ""
+echo "You can now submit training jobs:"
+echo "  bash slurm/train_all.sh all"

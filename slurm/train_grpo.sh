@@ -64,8 +64,15 @@ cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
 mkdir -p logs
 
-# ─── Ensure training deps are installed (needs GPU node) ──────────────────
-pip install unsloth trl peft bitsandbytes --quiet 2>/dev/null || true
+# ─── Verify training deps are installed ───────────────────────────────────
+# NOTE: Dependencies must be installed BEFORE submitting jobs.
+# Run: bash slurm/setup_env.sh   (once, on a GPU node)
+echo "Checking Python dependencies..."
+python -c "import torch; print(f'  PyTorch {torch.__version__}, CUDA {torch.cuda.is_available()}')"
+python -c "from trl import SFTConfig; print('  TRL: OK')"
+python -c "import peft; print('  PEFT: OK')"
+python -c "import bitsandbytes; print('  bitsandbytes: OK')"
+echo ""
 
 # ─── Load auth tokens (HF_TOKEN + WANDB_API_KEY) ─────────────────────────
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
