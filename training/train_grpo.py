@@ -421,7 +421,7 @@ def main():
     # Build trainer with all 4 reward functions + early stopping
     trainer = GRPOTrainer(
         model=model,
-        config=grpo_training_config,
+        args=grpo_training_config,
         train_dataset=dataset,
         tokenizer=tokenizer,
         reward_funcs=[
