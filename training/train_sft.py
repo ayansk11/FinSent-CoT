@@ -83,9 +83,9 @@ def load_model_peft(config: dict, lora_r: int, lora_alpha: int):
     model = AutoModelForCausalLM.from_pretrained(
         config["base_model"],
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map={"": 0},
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
 
     model = prepare_model_for_kbit_training(model)

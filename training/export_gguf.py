@@ -154,17 +154,17 @@ def export_peft_to_hf(grpo_checkpoint: str, output_dir: Path, model_name: str) -
         from peft import AutoPeftModelForCausalLM
         model = AutoPeftModelForCausalLM.from_pretrained(
             grpo_checkpoint,
-            device_map="auto",
+            device_map={"": 0},
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
         model = model.merge_and_unload()
     except Exception:
         model = AutoModelForCausalLM.from_pretrained(
             grpo_checkpoint,
-            device_map="auto",
+            device_map={"": 0},
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
 
     tokenizer = AutoTokenizer.from_pretrained(grpo_checkpoint, trust_remote_code=True)
