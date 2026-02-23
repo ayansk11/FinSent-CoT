@@ -319,7 +319,16 @@ def main():
 
         # Upload to HuggingFace (each quant to its own repo + full-precision repo)
         if args.upload:
+            from huggingface_hub import HfApi
+            from model_card_generator import generate_all_cards
+
+            # Generate model cards
+            cards_dir = output_dir / "model_cards"
+            cards = generate_all_cards(model_key, config, cards_dir)
+
             print(f"\nUploading to HuggingFace (3 GGUF repos + 1 full-precision repo)...")
+            api = HfApi()
+
             for e in exports:
                 quant = e["quantization"]
                 repo = hf_repos[quant]
@@ -327,17 +336,33 @@ def main():
                 modelfile_path = quant_dir / "Modelfile"
                 upload_quant_to_hf(str(quant_dir), e["filename"], str(modelfile_path), repo)
 
+                # Upload model card for this GGUF repo
+                if repo in cards:
+                    api.upload_file(
+                        path_or_fileobj=cards[repo],
+                        path_in_repo="README.md",
+                        repo_id=repo,
+                        repo_type="model",
+                    )
+                    print(f"    Uploaded README.md -> {repo}")
+
             # Upload merged HF weights to dedicated full-precision repo
             hf_full_repo = config["hf_full"]
-            from huggingface_hub import HfApi
-            api = HfApi()
             api.create_repo(repo_id=hf_full_repo, repo_type="model", exist_ok=True)
             api.upload_folder(
                 folder_path=str(merged_dir),
                 repo_id=hf_full_repo,
                 repo_type="model",
             )
-            print(f"    Uploaded merged HF weights -> {hf_full_repo}")
+            # Upload model card for full-precision repo
+            if hf_full_repo in cards:
+                api.upload_file(
+                    path_or_fileobj=cards[hf_full_repo],
+                    path_in_repo="README.md",
+                    repo_id=hf_full_repo,
+                    repo_type="model",
+                )
+            print(f"    Uploaded merged HF weights + README.md -> {hf_full_repo}")
 
         print(f"\n{'='*70}")
         print("EXPORT COMPLETE")
@@ -359,18 +384,43 @@ def main():
             "note": "Use llama.cpp convert_hf_to_gguf.py for GGUF quantization into 3 repos",
         })
 
-        # Upload merged HF weights to dedicated full-precision repo
+        # Upload merged HF weights + model cards to HuggingFace
         if args.upload:
-            hf_full_repo = config["hf_full"]
             from huggingface_hub import HfApi
+            from model_card_generator import generate_all_cards
+
+            cards_dir = output_dir / "model_cards"
+            cards = generate_all_cards(model_key, config, cards_dir)
+
             api = HfApi()
+            hf_full_repo = config["hf_full"]
             api.create_repo(repo_id=hf_full_repo, repo_type="model", exist_ok=True)
             api.upload_folder(
                 folder_path=merge_info["merged_dir"],
                 repo_id=hf_full_repo,
                 repo_type="model",
             )
-            print(f"    Uploaded merged HF weights -> {hf_full_repo}")
+            if hf_full_repo in cards:
+                api.upload_file(
+                    path_or_fileobj=cards[hf_full_repo],
+                    path_in_repo="README.md",
+                    repo_id=hf_full_repo,
+                    repo_type="model",
+                )
+            print(f"    Uploaded merged HF weights + README.md -> {hf_full_repo}")
+
+            # Upload model cards for GGUF repos (weights uploaded after manual conversion)
+            for quant in QUANTIZATIONS:
+                repo = hf_repos[quant]
+                if repo in cards:
+                    api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
+                    api.upload_file(
+                        path_or_fileobj=cards[repo],
+                        path_in_repo="README.md",
+                        repo_id=repo,
+                        repo_type="model",
+                    )
+                    print(f"    Uploaded README.md -> {repo}")
 
         print(f"\n{'='*70}")
         print("EXPORT COMPLETE (HF weights only — GGUF requires manual conversion)")
