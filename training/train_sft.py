@@ -16,6 +16,7 @@ import argparse
 import json
 from pathlib import Path
 
+import unsloth  # Must be imported BEFORE trl/transformers/peft for patching
 import torch
 import wandb
 from datasets import Dataset
