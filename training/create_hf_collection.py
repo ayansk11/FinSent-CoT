@@ -43,7 +43,7 @@ def main():
     repos.append({
         "item_id": DATASET_REPO,
         "item_type": "dataset",
-        "note": "CoT training dataset — 4.7K balanced 3-class financial sentiment",
+        "note": "CoT training dataset — 16.9K balanced 3-class financial sentiment",
     })
 
     # Add models grouped by model name, then by quantization
