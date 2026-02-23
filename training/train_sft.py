@@ -260,15 +260,20 @@ def main():
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    # Log final metrics to W&B (trainer's WandbCallback may auto-finish the run)
-    if wandb.run is not None:
-        wandb.summary.update({
-            "final_train_loss": trainer.state.log_history[-1].get("loss", None),
-            "total_steps": trainer.state.global_step,
-            "dataset_size": len(dataset),
-            "model_key": model_key,
-        })
-        wandb.finish()
+    # Log final metrics to W&B
+    # NOTE: HF Trainer's WandbCallback auto-calls wandb.finish() in on_train_end,
+    # so wandb.run may already be dead. Use try/except to handle gracefully.
+    try:
+        if wandb.run is not None:
+            wandb.summary.update({
+                "final_train_loss": trainer.state.log_history[-1].get("loss", None),
+                "total_steps": trainer.state.global_step,
+                "dataset_size": len(dataset),
+                "model_key": model_key,
+            })
+            wandb.finish()
+    except Exception as e:
+        print(f"W&B post-training logging skipped (run already finished): {e}")
     print(f"SFT training complete for {config['short_name']}!")
 
 
