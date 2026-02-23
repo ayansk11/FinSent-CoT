@@ -448,25 +448,8 @@ def main():
 
     # ─── Log comprehensive evidence to W&B ───────────────────────────────────
     actual_steps = trainer.state.global_step
-    early_stop_callback.log_evidence_to_wandb()
 
-    summary = {
-        "model_key": model_key,
-        "actual_steps": actual_steps,
-        "max_steps": max_steps,
-        "steps_saved": max_steps - actual_steps,
-        "training_time_hours": training_time / 3600,
-        "dataset_size": len(dataset),
-        "early_stopped": early_stop_callback.should_stop,
-    }
-
-    if trainer.state.log_history:
-        last_log = trainer.state.log_history[-1]
-        summary["final_loss"] = last_log.get("loss", None)
-
-    wandb.summary.update(summary)
-
-    # Print human-readable report
+    # Print human-readable report (always, even if wandb auto-finished)
     report_lines = [
         "=" * 70,
         f"GRPO TRAINING REPORT — {config['short_name']}",
@@ -484,12 +467,30 @@ def main():
     report_text = "\n".join(report_lines)
     print(f"\n{report_text}")
 
-    wandb.log({"training_report": wandb.Table(
-        columns=["field", "value"],
-        data=[line.split(": ", 1) if ": " in line else [line, ""] for line in report_lines if line.strip("=")],
-    )})
+    # Trainer's WandbCallback may auto-finish the run — guard all wandb calls
+    if wandb.run is not None:
+        early_stop_callback.log_evidence_to_wandb()
 
-    wandb.finish()
+        summary = {
+            "model_key": model_key,
+            "actual_steps": actual_steps,
+            "max_steps": max_steps,
+            "steps_saved": max_steps - actual_steps,
+            "training_time_hours": training_time / 3600,
+            "dataset_size": len(dataset),
+            "early_stopped": early_stop_callback.should_stop,
+        }
+        if trainer.state.log_history:
+            last_log = trainer.state.log_history[-1]
+            summary["final_loss"] = last_log.get("loss", None)
+
+        wandb.summary.update(summary)
+        wandb.log({"training_report": wandb.Table(
+            columns=["field", "value"],
+            data=[line.split(": ", 1) if ": " in line else [line, ""] for line in report_lines if line.strip("=")],
+        )})
+        wandb.finish()
+
     print(f"GRPO training complete for {config['short_name']}!")
 
 
