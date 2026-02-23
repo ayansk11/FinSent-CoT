@@ -260,14 +260,15 @@ def main():
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    # Log final metrics to W&B
-    wandb.summary.update({
-        "final_train_loss": trainer.state.log_history[-1].get("loss", None),
-        "total_steps": trainer.state.global_step,
-        "dataset_size": len(dataset),
-        "model_key": model_key,
-    })
-    wandb.finish()
+    # Log final metrics to W&B (trainer's WandbCallback may auto-finish the run)
+    if wandb.run is not None:
+        wandb.summary.update({
+            "final_train_loss": trainer.state.log_history[-1].get("loss", None),
+            "total_steps": trainer.state.global_step,
+            "dataset_size": len(dataset),
+            "model_key": model_key,
+        })
+        wandb.finish()
     print(f"SFT training complete for {config['short_name']}!")
 
 
