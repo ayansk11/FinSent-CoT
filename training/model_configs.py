@@ -53,6 +53,7 @@ MODEL_CONFIGS = {
             "sft_time": "02:00:00",
             "grpo_time": "08:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-Qwen3-0.6B",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q5_K_M",
@@ -94,6 +95,7 @@ MODEL_CONFIGS = {
             "sft_time": "03:00:00",
             "grpo_time": "10:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-Qwen3-1.7B",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q5_K_M",
@@ -135,6 +137,7 @@ MODEL_CONFIGS = {
             "sft_time": "03:00:00",
             "grpo_time": "10:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-Qwen3-4B",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-4B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-4B-Q5_K_M",
@@ -176,6 +179,7 @@ MODEL_CONFIGS = {
             "sft_time": "04:00:00",
             "grpo_time": "14:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-Qwen3-8B",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-8B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-8B-Q5_K_M",
@@ -219,6 +223,7 @@ MODEL_CONFIGS = {
             "sft_time": "03:00:00",
             "grpo_time": "10:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q5_K_M",
@@ -263,6 +268,7 @@ MODEL_CONFIGS = {
             "sft_time": "03:00:00",
             "grpo_time": "10:00:00",
         },
+        "hf_full": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M",
         "hf_repos": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q5_K_M",

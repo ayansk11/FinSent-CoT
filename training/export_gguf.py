@@ -317,9 +317,9 @@ def main():
             summary[f"{e['quantization'].lower()}_size_gb"] = e["file_size_gb"]
         wandb.summary.update(summary)
 
-        # Upload to HuggingFace (each quant to its own repo)
+        # Upload to HuggingFace (each quant to its own repo + full-precision repo)
         if args.upload:
-            print(f"\nUploading to HuggingFace (3 separate repos)...")
+            print(f"\nUploading to HuggingFace (3 GGUF repos + 1 full-precision repo)...")
             for e in exports:
                 quant = e["quantization"]
                 repo = hf_repos[quant]
@@ -327,16 +327,17 @@ def main():
                 modelfile_path = quant_dir / "Modelfile"
                 upload_quant_to_hf(str(quant_dir), e["filename"], str(modelfile_path), repo)
 
-            # Also upload merged HF weights to the Q5_K_M repo (recommended)
+            # Upload merged HF weights to dedicated full-precision repo
+            hf_full_repo = config["hf_full"]
             from huggingface_hub import HfApi
             api = HfApi()
+            api.create_repo(repo_id=hf_full_repo, repo_type="model", exist_ok=True)
             api.upload_folder(
                 folder_path=str(merged_dir),
-                path_in_repo="merged_hf",
-                repo_id=hf_repos["Q5_K_M"],
+                repo_id=hf_full_repo,
                 repo_type="model",
             )
-            print(f"    Uploaded merged HF weights -> {hf_repos['Q5_K_M']}/merged_hf")
+            print(f"    Uploaded merged HF weights -> {hf_full_repo}")
 
         print(f"\n{'='*70}")
         print("EXPORT COMPLETE")
@@ -358,11 +359,25 @@ def main():
             "note": "Use llama.cpp convert_hf_to_gguf.py for GGUF quantization into 3 repos",
         })
 
+        # Upload merged HF weights to dedicated full-precision repo
+        if args.upload:
+            hf_full_repo = config["hf_full"]
+            from huggingface_hub import HfApi
+            api = HfApi()
+            api.create_repo(repo_id=hf_full_repo, repo_type="model", exist_ok=True)
+            api.upload_folder(
+                folder_path=merge_info["merged_dir"],
+                repo_id=hf_full_repo,
+                repo_type="model",
+            )
+            print(f"    Uploaded merged HF weights -> {hf_full_repo}")
+
         print(f"\n{'='*70}")
         print("EXPORT COMPLETE (HF weights only — GGUF requires manual conversion)")
         print(f"{'='*70}")
         print(f"  Merged weights: {merge_info['merged_dir']}")
         print(f"  Total size: {merge_info['total_size_mb']} MB")
+        print(f"  Full-precision repo: {config['hf_full']}")
         print(f"\n  Convert to GGUF with llama.cpp:")
         for quant in QUANTIZATIONS:
             print(f"    python convert_hf_to_gguf.py {merge_info['merged_dir']} --outtype {quant.lower()}")
