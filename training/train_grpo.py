@@ -25,12 +25,20 @@ import sys
 import time
 from pathlib import Path
 
-import unsloth  # Must be imported BEFORE trl/transformers/peft for patching
+# Import TRL FIRST to get the original, unpatched GRPOTrainer.
+# Unsloth's patched GRPOTrainer has a tensor size mismatch bug in compute_loss.
+from trl import GRPOConfig
+from trl import GRPOTrainer as _OriginalGRPOTrainer
+
+# Import unsloth AFTER saving the original GRPOTrainer reference.
+# Unsloth will patch trl.GRPOTrainer, but we already have the original.
+# We still need unsloth for FastLanguageModel (fast QLoRA loading).
+import unsloth  # noqa: E402
+
 import torch
 import wandb
 from datasets import Dataset
 from transformers import TrainerCallback
-from trl import GRPOConfig, GRPOTrainer
 
 from model_configs import get_config, resolve_model_key, ALL_MODEL_KEYS
 from rewards import (
@@ -419,9 +427,10 @@ def main():
     )
 
     # Build trainer with all 4 reward functions + early stopping
-    trainer = GRPOTrainer(
+    # Use _OriginalGRPOTrainer (standard TRL) to avoid Unsloth's compute_loss bug
+    trainer = _OriginalGRPOTrainer(
         model=model,
-        args=grpo_training_config,
+        config=grpo_training_config,
         train_dataset=dataset,
         tokenizer=tokenizer,
         reward_funcs=[
