@@ -251,6 +251,14 @@ def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: 
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
+    # Fix dtype mismatch: BnB quantizes main layers to 4bit with bf16 compute,
+    # but non-quantized layers (lm_head, embeddings) stay float32. This causes
+    # "expected Float but found BFloat16" during generation. Cast them to bf16.
+    for name, module in model.named_modules():
+        if hasattr(module, 'weight') and isinstance(module.weight, torch.nn.Parameter):
+            if module.weight.dtype == torch.float32 and not hasattr(module.weight, 'quant_state'):
+                module.to(torch.bfloat16)
+
     return model, tokenizer
 
 
@@ -348,6 +356,44 @@ def main():
         import unsloth  # noqa: F401  — patches trl classes in-place
         from trl import GRPOConfig, GRPOTrainer  # Both now patched by Unsloth
         print("  [Unsloth] GRPOConfig + GRPOTrainer patched by Unsloth")
+
+        # ── Monkey-patch Unsloth tensor mismatch bug ──────────────────────
+        # Unsloth's masked_batch_mean crashes when completion tensor size
+        # differs from completion_mask size (off by ~22 tokens).
+        # Fix: truncate both to the shorter length before multiplication.
+        def _fixed_masked_batch_mean(x, completion_mask):
+            min_len = min(x.shape[-1], completion_mask.shape[-1])
+            x = x[..., :min_len]
+            completion_mask = completion_mask[..., :min_len]
+            completion_token_count = completion_mask.sum(dim=-1)
+            return (x * completion_mask).sum() / completion_token_count
+
+        _patched = False
+        for _name in dir(GRPOTrainer):
+            _attr = getattr(GRPOTrainer, _name, None)
+            for _fn in [_attr, getattr(_attr, '__func__', None),
+                        getattr(_attr, '__wrapped__', None)]:
+                if _fn is None:
+                    continue
+                _g = getattr(_fn, '__globals__', None)
+                if _g and 'masked_batch_mean' in _g:
+                    _g['masked_batch_mean'] = _fixed_masked_batch_mean
+                    _patched = True
+                    break
+            if _patched:
+                break
+
+        # Fallback: search sys.modules for the compiled cache module
+        if not _patched:
+            for _mod in sys.modules.values():
+                if hasattr(_mod, 'masked_batch_mean') and 'unsloth' in str(
+                    getattr(_mod, '__file__', '')
+                ).lower():
+                    _mod.masked_batch_mean = _fixed_masked_batch_mean
+                    _patched = True
+                    break
+
+        print(f"  [Patch] masked_batch_mean tensor fix: {'applied' if _patched else 'FAILED'}")
     else:
         from trl import GRPOConfig, GRPOTrainer  # Standard TRL (unpatched)
         print("  [PEFT] Using standard TRL GRPOConfig + GRPOTrainer")
