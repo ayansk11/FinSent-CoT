@@ -32,7 +32,6 @@ import torch
 import wandb
 from datasets import Dataset
 from transformers import TrainerCallback
-from trl import GRPOConfig
 
 from model_configs import get_config, resolve_model_key, ALL_MODEL_KEYS
 from rewards import (
@@ -225,7 +224,7 @@ def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: 
             quantization_config=bnb_config,
             device_map={"": 0},
             trust_remote_code=True,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         )
         # Merge SFT adapters, then add fresh GRPO LoRA
         model = model.merge_and_unload()
@@ -236,7 +235,7 @@ def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: 
             quantization_config=bnb_config,
             device_map={"": 0},
             trust_remote_code=True,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         )
         model = prepare_model_for_kbit_training(model)
 
@@ -342,15 +341,16 @@ def main():
     print()
 
     # ─── Conditional Unsloth import ────────────────────────────────────────
-    # Import unsloth ONLY for supported models. Unsloth patches
-    # trl.GRPOTrainer in-place, so we must NOT import it for MobileLLM.
+    # Unsloth MUST be imported BEFORE trl so it can patch both GRPOConfig
+    # and GRPOTrainer. Importing GRPOConfig before Unsloth causes
+    # 'GRPOConfig has no attribute unsloth_num_chunks'.
     if use_unsloth:
-        import unsloth  # noqa: F401  — patches trl.GRPOTrainer in-place
-        from trl import GRPOTrainer  # This is now Unsloth's _UnslothGRPOTrainer
-        print("  [Unsloth] GRPOTrainer patched by Unsloth")
+        import unsloth  # noqa: F401  — patches trl classes in-place
+        from trl import GRPOConfig, GRPOTrainer  # Both now patched by Unsloth
+        print("  [Unsloth] GRPOConfig + GRPOTrainer patched by Unsloth")
     else:
-        from trl import GRPOTrainer  # Standard TRL (unpatched)
-        print("  [PEFT] Using standard TRL GRPOTrainer")
+        from trl import GRPOConfig, GRPOTrainer  # Standard TRL (unpatched)
+        print("  [PEFT] Using standard TRL GRPOConfig + GRPOTrainer")
 
     # ─── Initialize W&B ─────────────────────────────────────────────────────
     wandb.init(
