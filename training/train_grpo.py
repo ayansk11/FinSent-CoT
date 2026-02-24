@@ -391,24 +391,31 @@ def main():
         warmup_steps=args.early_stop_warmup,
     )
 
-    # Detect TRL version's parameter name (config= in v0.12+, args= in older)
+    # Detect TRL version's parameter names via inspect
     _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
     _config_key = "config" if "config" in _grpo_params else "args"
 
-    # Build trainer with all 4 reward functions + early stopping
-    trainer = GRPOTrainer(
-        model=model,
-        **{_config_key: grpo_training_config},
-        train_dataset=dataset,
-        tokenizer=tokenizer,
-        reward_funcs=[
+    # Build trainer kwargs — handle renamed parameters across TRL versions
+    trainer_kwargs = {
+        "model": model,
+        _config_key: grpo_training_config,
+        "train_dataset": dataset,
+        "reward_funcs": [
             sentiment_correctness_reward,
             format_compliance_reward,
             reasoning_quality_reward,
             consistency_reward,
         ],
-        callbacks=[early_stop_callback],
-    )
+        "callbacks": [early_stop_callback],
+    }
+
+    # tokenizer= was renamed to processing_class= in TRL v0.14+
+    if "tokenizer" in _grpo_params:
+        trainer_kwargs["tokenizer"] = tokenizer
+    elif "processing_class" in _grpo_params:
+        trainer_kwargs["processing_class"] = tokenizer
+
+    trainer = GRPOTrainer(**trainer_kwargs)
 
     print(f"\nStarting GRPO training...")
     print(f"  Reward functions: 4 (correctness, format, reasoning, consistency)")
