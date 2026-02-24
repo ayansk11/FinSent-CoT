@@ -11,8 +11,9 @@ Features:
 - All 4 reward signals tracked individually per step
 - Auto-adjusts batch size, num_generations, LoRA config per model
 
-All models use standard PEFT + bitsandbytes 4-bit for GRPO training.
-(Unsloth's GRPOTrainer has a tensor size mismatch bug in compute_loss.)
+Models 1-5 use Unsloth QLoRA. Model 6 (MobileLLM) uses standard PEFT.
+Unsloth is imported CONDITIONALLY so it only patches GRPOTrainer for
+supported models — MobileLLM gets the unpatched standard TRL trainer.
 
 Usage:
     python train_grpo.py --model-key qwen3-4b --sft-checkpoint ./checkpoints/sft/qwen3-4b
@@ -31,7 +32,7 @@ import torch
 import wandb
 from datasets import Dataset
 from transformers import TrainerCallback
-from trl import GRPOConfig, GRPOTrainer
+from trl import GRPOConfig
 
 from model_configs import get_config, resolve_model_key, ALL_MODEL_KEYS
 from rewards import (
@@ -173,6 +174,30 @@ class RewardEarlyStoppingCallback(TrainerCallback):
 
 # ─── Model Loading ────────────────────────────────────────────────────────────
 
+def load_model_unsloth(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int, max_seq: int):
+    """Load SFT checkpoint with Unsloth, add fresh LoRA for GRPO."""
+    from unsloth import FastLanguageModel
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=sft_checkpoint,
+        max_seq_length=max_seq,
+        dtype=None,
+        load_in_4bit=True,
+    )
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=lora_r,
+        target_modules=config["target_modules"],
+        lora_alpha=lora_alpha,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing="unsloth",
+    )
+
+    return model, tokenizer
+
+
 def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int):
     """Load SFT checkpoint with standard PEFT for GRPO."""
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -287,6 +312,7 @@ def main():
     model_key = resolve_model_key(args.model_key)
     config = get_config(model_key)
     grpo_cfg = config["grpo"]
+    use_unsloth = config["use_unsloth"]
 
     # Apply overrides
     max_steps = args.max_steps or grpo_cfg["max_steps"]
@@ -305,7 +331,7 @@ def main():
     print("=" * 70)
     print(f"  Model key:       {model_key}")
     print(f"  SFT checkpoint:  {args.sft_checkpoint}")
-    print(f"  Backend:         PEFT + bitsandbytes 4-bit")
+    print(f"  Backend:         {'Unsloth QLoRA' if use_unsloth else 'PEFT + bitsandbytes'}")
     print(f"  LoRA r={lora_r}, alpha={lora_alpha}")
     print(f"  Batch: {batch_size} x {grad_accum} = {batch_size * grad_accum} effective")
     print(f"  LR: {lr}")
@@ -314,6 +340,17 @@ def main():
     print(f"  Early stop: patience={args.early_stop_patience}, delta={args.early_stop_min_delta}")
     print(f"  Output: {output_dir}")
     print()
+
+    # ─── Conditional Unsloth import ────────────────────────────────────────
+    # Import unsloth ONLY for supported models. Unsloth patches
+    # trl.GRPOTrainer in-place, so we must NOT import it for MobileLLM.
+    if use_unsloth:
+        import unsloth  # noqa: F401  — patches trl.GRPOTrainer in-place
+        from trl import GRPOTrainer  # This is now Unsloth's _UnslothGRPOTrainer
+        print("  [Unsloth] GRPOTrainer patched by Unsloth")
+    else:
+        from trl import GRPOTrainer  # Standard TRL (unpatched)
+        print("  [PEFT] Using standard TRL GRPOTrainer")
 
     # ─── Initialize W&B ─────────────────────────────────────────────────────
     wandb.init(
@@ -325,7 +362,7 @@ def main():
             "model_key": model_key,
             "base_model": config["base_model"],
             "model_family": config["model_family"],
-            "use_unsloth": config["use_unsloth"],
+            "use_unsloth": use_unsloth,
             "sft_checkpoint": args.sft_checkpoint,
             "max_steps": max_steps,
             "batch_size": batch_size,
@@ -353,12 +390,16 @@ def main():
         },
     )
 
-    # Load model from SFT checkpoint — always use standard PEFT for GRPO
-    # (Unsloth's GRPOTrainer has tensor size mismatch bugs in compute_loss)
+    # ─── Load model from SFT checkpoint ────────────────────────────────────
     print(f"\nLoading {config['short_name']} from {args.sft_checkpoint}...")
-    model, tokenizer = load_model_peft(
-        args.sft_checkpoint, config, lora_r, lora_alpha
-    )
+    if use_unsloth:
+        model, tokenizer = load_model_unsloth(
+            args.sft_checkpoint, config, lora_r, lora_alpha, max_seq_length
+        )
+    else:
+        model, tokenizer = load_model_peft(
+            args.sft_checkpoint, config, lora_r, lora_alpha
+        )
 
     # Load dataset
     dataset = load_grpo_dataset(args.dataset_dir)
@@ -391,31 +432,44 @@ def main():
         warmup_steps=args.early_stop_warmup,
     )
 
-    # Detect TRL version's parameter names via inspect
-    _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
-    _config_key = "config" if "config" in _grpo_params else "args"
+    # ─── Build trainer ─────────────────────────────────────────────────────
+    reward_funcs = [
+        sentiment_correctness_reward,
+        format_compliance_reward,
+        reasoning_quality_reward,
+        consistency_reward,
+    ]
 
-    # Build trainer kwargs — handle renamed parameters across TRL versions
-    trainer_kwargs = {
-        "model": model,
-        _config_key: grpo_training_config,
-        "train_dataset": dataset,
-        "reward_funcs": [
-            sentiment_correctness_reward,
-            format_compliance_reward,
-            reasoning_quality_reward,
-            consistency_reward,
-        ],
-        "callbacks": [early_stop_callback],
-    }
+    if use_unsloth:
+        # Unsloth's patched GRPOTrainer uses args= and tokenizer=
+        trainer = GRPOTrainer(
+            model=model,
+            args=grpo_training_config,
+            train_dataset=dataset,
+            tokenizer=tokenizer,
+            reward_funcs=reward_funcs,
+            callbacks=[early_stop_callback],
+        )
+    else:
+        # Standard TRL — detect parameter names via inspect
+        _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
+        _config_key = "config" if "config" in _grpo_params else "args"
 
-    # tokenizer= was renamed to processing_class= in TRL v0.14+
-    if "tokenizer" in _grpo_params:
-        trainer_kwargs["tokenizer"] = tokenizer
-    elif "processing_class" in _grpo_params:
-        trainer_kwargs["processing_class"] = tokenizer
+        trainer_kwargs = {
+            "model": model,
+            _config_key: grpo_training_config,
+            "train_dataset": dataset,
+            "reward_funcs": reward_funcs,
+            "callbacks": [early_stop_callback],
+        }
 
-    trainer = GRPOTrainer(**trainer_kwargs)
+        # tokenizer= was renamed to processing_class= in TRL v0.14+
+        if "tokenizer" in _grpo_params:
+            trainer_kwargs["tokenizer"] = tokenizer
+        elif "processing_class" in _grpo_params:
+            trainer_kwargs["processing_class"] = tokenizer
+
+        trainer = GRPOTrainer(**trainer_kwargs)
 
     print(f"\nStarting GRPO training...")
     print(f"  Reward functions: 4 (correctness, format, reasoning, consistency)")
