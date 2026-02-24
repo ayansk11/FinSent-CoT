@@ -127,7 +127,7 @@ MODEL_CONFIGS = {
             "lr": 5e-5,
             "lora_r": 32,
             "lora_alpha": 64,
-            "num_generations": 6,
+            "num_generations": 4,
             "max_steps": 3000,
             "max_completion_length": 512,
         },
