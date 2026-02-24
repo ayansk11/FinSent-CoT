@@ -11,7 +11,8 @@ Features:
 - All 4 reward signals tracked individually per step
 - Auto-adjusts batch size, num_generations, LoRA config per model
 
-Models 1-5 use Unsloth QLoRA. Model 6 (MobileLLM) uses standard PEFT.
+All models use standard PEFT + bitsandbytes 4-bit for GRPO training.
+(Unsloth's GRPOTrainer has a tensor size mismatch bug in compute_loss.)
 
 Usage:
     python train_grpo.py --model-key qwen3-4b --sft-checkpoint ./checkpoints/sft/qwen3-4b
@@ -19,26 +20,18 @@ Usage:
 """
 
 import argparse
+import inspect
 import json
 import re
 import sys
 import time
 from pathlib import Path
 
-# Import TRL FIRST to get the original, unpatched GRPOTrainer.
-# Unsloth's patched GRPOTrainer has a tensor size mismatch bug in compute_loss.
-from trl import GRPOConfig
-from trl import GRPOTrainer as _OriginalGRPOTrainer
-
-# Import unsloth AFTER saving the original GRPOTrainer reference.
-# Unsloth will patch trl.GRPOTrainer, but we already have the original.
-# We still need unsloth for FastLanguageModel (fast QLoRA loading).
-import unsloth  # noqa: E402
-
 import torch
 import wandb
 from datasets import Dataset
 from transformers import TrainerCallback
+from trl import GRPOConfig, GRPOTrainer
 
 from model_configs import get_config, resolve_model_key, ALL_MODEL_KEYS
 from rewards import (
@@ -180,30 +173,6 @@ class RewardEarlyStoppingCallback(TrainerCallback):
 
 # ─── Model Loading ────────────────────────────────────────────────────────────
 
-def load_model_unsloth(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int, max_seq: int):
-    """Load SFT checkpoint with Unsloth, add fresh LoRA for GRPO."""
-    from unsloth import FastLanguageModel
-
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=sft_checkpoint,
-        max_seq_length=max_seq,
-        dtype=None,
-        load_in_4bit=True,
-    )
-
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=lora_r,
-        target_modules=config["target_modules"],
-        lora_alpha=lora_alpha,
-        lora_dropout=0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-    )
-
-    return model, tokenizer
-
-
 def load_model_peft(sft_checkpoint: str, config: dict, lora_r: int, lora_alpha: int):
     """Load SFT checkpoint with standard PEFT for GRPO."""
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -336,7 +305,7 @@ def main():
     print("=" * 70)
     print(f"  Model key:       {model_key}")
     print(f"  SFT checkpoint:  {args.sft_checkpoint}")
-    print(f"  Backend:         {'Unsloth QLoRA' if config['use_unsloth'] else 'PEFT + bitsandbytes'}")
+    print(f"  Backend:         PEFT + bitsandbytes 4-bit")
     print(f"  LoRA r={lora_r}, alpha={lora_alpha}")
     print(f"  Batch: {batch_size} x {grad_accum} = {batch_size * grad_accum} effective")
     print(f"  LR: {lr}")
@@ -384,16 +353,12 @@ def main():
         },
     )
 
-    # Load model from SFT checkpoint
+    # Load model from SFT checkpoint — always use standard PEFT for GRPO
+    # (Unsloth's GRPOTrainer has tensor size mismatch bugs in compute_loss)
     print(f"\nLoading {config['short_name']} from {args.sft_checkpoint}...")
-    if config["use_unsloth"]:
-        model, tokenizer = load_model_unsloth(
-            args.sft_checkpoint, config, lora_r, lora_alpha, max_seq_length
-        )
-    else:
-        model, tokenizer = load_model_peft(
-            args.sft_checkpoint, config, lora_r, lora_alpha
-        )
+    model, tokenizer = load_model_peft(
+        args.sft_checkpoint, config, lora_r, lora_alpha
+    )
 
     # Load dataset
     dataset = load_grpo_dataset(args.dataset_dir)
@@ -426,11 +391,14 @@ def main():
         warmup_steps=args.early_stop_warmup,
     )
 
+    # Detect TRL version's parameter name (config= in v0.12+, args= in older)
+    _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
+    _config_key = "config" if "config" in _grpo_params else "args"
+
     # Build trainer with all 4 reward functions + early stopping
-    # Use _OriginalGRPOTrainer (standard TRL) to avoid Unsloth's compute_loss bug
-    trainer = _OriginalGRPOTrainer(
+    trainer = GRPOTrainer(
         model=model,
-        config=grpo_training_config,
+        **{_config_key: grpo_training_config},
         train_dataset=dataset,
         tokenizer=tokenizer,
         reward_funcs=[
