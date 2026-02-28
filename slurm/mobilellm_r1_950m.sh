@@ -48,6 +48,17 @@ export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
+# Build llama.cpp if not present (needed for GGUF export)
+if [ ! -f llama.cpp/llama-quantize ] && [ ! -f llama.cpp/quantize ]; then
+    if [ ! -d llama.cpp ]; then
+        echo "Cloning llama.cpp..."
+        git clone --depth 1 https://github.com/ggerganov/llama.cpp
+    fi
+    echo "Building llama.cpp..."
+    cd llama.cpp && make -j16 llama-quantize 2>&1 | tail -3 && cd ..
+fi
+
+# Run full pipeline
 python training/mobilellm_r1_950m.py --phase all
 
 echo "End: $(date)"
