@@ -49,6 +49,19 @@ export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
+# Patch Unsloth compiled cache (fix masked_batch_mean tensor mismatch)
+python training/patch_unsloth_cache.py --generate
+
+# Build llama.cpp if not present (needed for GGUF export)
+if [ ! -f llama.cpp/llama-quantize ] && [ ! -f llama.cpp/quantize ]; then
+    if [ ! -d llama.cpp ]; then
+        echo "Cloning llama.cpp..."
+        git clone --depth 1 https://github.com/ggerganov/llama.cpp
+    fi
+    echo "Building llama.cpp..."
+    cd llama.cpp && make -j16 llama-quantize 2>&1 | tail -3 && cd ..
+fi
+
 # Run full pipeline
 python training/qwen3_0_6b.py --phase all
 
