@@ -33,7 +33,7 @@ mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
          "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
 module load python/gpu/3.11.5
-module load cudatoolkit/12.1
+module load cudatoolkit/12.2
 
 cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
