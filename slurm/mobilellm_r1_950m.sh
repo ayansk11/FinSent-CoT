@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=finsent-mobilellm
 #SBATCH --account=r01510
-#SBATCH --partition=gpu
+#SBATCH --partition=hopper
+#SBATCH --qos=hopper
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
@@ -34,7 +35,7 @@ mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
          "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
 module load python/gpu/3.11.5
-module load cudatoolkit/12.2
+module load cudatoolkit/12.1
 
 cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
