@@ -419,7 +419,7 @@ def run_grpo():
             warmup_ratio=0.1,
             num_generations=GRPO_NUM_GENERATIONS,
             max_completion_length=GRPO_MAX_COMPLETION_LENGTH,
-            max_prompt_length=512,
+            max_prompt_length=512, mask_truncated_completions=True,
             logging_steps=10,
             save_steps=50,
             save_total_limit=5,
