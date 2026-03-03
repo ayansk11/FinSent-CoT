@@ -39,6 +39,75 @@ def find_cache_files():
     return list(set(files))
 
 
+def patch_unsloth_stats():
+    """Patch Unsloth's get_statistics to be a no-op.
+
+    Unsloth calls snapshot_download("unslothai/other") on every
+    from_pretrained() call for telemetry.  When multiple SLURM jobs start
+    simultaneously, this exhausts the HF 5000-request/5-min rate limit and
+    crashes with 429 Too Many Requests.
+
+    Fix: replace the function body with an early return in the source file.
+    """
+    try:
+        import unsloth.models._utils as _utils
+    except ImportError:
+        print("  [Stats patch] unsloth not installed, skipping")
+        return False
+
+    utils_path = _utils.__file__
+    print(f"\nPatching Unsloth stats: {utils_path}")
+
+    with open(utils_path, "r") as f:
+        content = f.read()
+
+    if "# STATS_PATCHED" in content:
+        print("  Already patched")
+        return False
+
+    # Replace: def get_statistics(local_files_only = False):
+    # With a version that returns immediately
+    old_sig = "def get_statistics(local_files_only"
+    if old_sig not in content:
+        print("  get_statistics signature not found (different Unsloth version)")
+        # Try monkey-patching at import time instead
+        _utils.get_statistics = lambda *a, **kw: None
+        print("  Monkey-patched get_statistics in-memory")
+        return True
+
+    # Insert a return statement right after the function signature
+    # Find the function and add `return  # STATS_PATCHED` as first line
+    lines = content.split("\n")
+    patched_lines = []
+    patched = False
+    for i, line in enumerate(lines):
+        patched_lines.append(line)
+        if not patched and old_sig in line and line.strip().endswith(":"):
+            # Get indentation of next line (function body)
+            indent = ""
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                indent = next_line[: len(next_line) - len(next_line.lstrip())]
+            if not indent:
+                indent = "    "
+            patched_lines.append(f"{indent}return  # STATS_PATCHED — disabled to avoid HF 429 rate limit")
+            patched = True
+
+    if patched:
+        with open(utils_path, "w") as f:
+            f.write("\n".join(patched_lines))
+
+        # Remove bytecache
+        pycache_dir = os.path.join(os.path.dirname(utils_path), "__pycache__")
+        if os.path.exists(pycache_dir):
+            for pyc in glob.glob(os.path.join(pycache_dir, "*.pyc")):
+                os.remove(pyc)
+        print("  Patched get_statistics -> no-op")
+        return True
+
+    return False
+
+
 def generate_cache():
     """Import unsloth + trl to generate the compiled cache if needed."""
     print("Generating Unsloth compiled cache (importing unsloth + trl)...")
@@ -117,6 +186,9 @@ def main():
         help="Generate cache by importing unsloth (requires GPU)",
     )
     args = parser.parse_args()
+
+    # Always patch Unsloth stats first (prevents HF 429 rate limit)
+    patch_unsloth_stats()
 
     files = find_cache_files()
 
