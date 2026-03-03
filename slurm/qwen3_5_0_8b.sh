@@ -22,6 +22,9 @@ export PYTHONUNBUFFERED=1
 echo "=== Job $SLURM_JOB_ID — Qwen3.5-0.8B ==="
 echo "Node: $SLURM_NODELIST | GPUs: $SLURM_GPUS_ON_NODE | Start: $(date)"
 
+# Stagger start to avoid HF Hub rate limiting when multiple jobs launch together
+sleep $(( SLURM_JOB_ID % 120 ))
+
 export HF_HOME=/N/scratch/ayshaikh/.cache/huggingface
 export HF_HUB_CACHE=/N/scratch/ayshaikh/.cache/huggingface/hub
 export XDG_CACHE_HOME=/N/scratch/ayshaikh/.cache
