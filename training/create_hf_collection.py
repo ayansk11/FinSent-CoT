@@ -1,7 +1,7 @@
 """
 Create/update the FinSent-CoT HuggingFace Collection.
 
-Groups all 25 repos (1 dataset + 6 full-precision + 18 GGUF) into a single
+Groups all 41 repos (1 dataset + 10 full-precision + 30 GGUF) into a single
 collection for easy discovery.
 
 Run once after all models are exported and uploaded:
@@ -79,15 +79,56 @@ MODELS = [
             "Q8_0":   "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q8_0",
         },
     },
+    {
+        "key": "qwen3.5-0.8b",
+        "name": "Qwen3.5-0.8B",
+        "full": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q8_0",
+        },
+    },
+    {
+        "key": "qwen3.5-2b",
+        "name": "Qwen3.5-2B",
+        "full": "Ayansk11/FinSent-CoT-Qwen3.5-2B",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q8_0",
+        },
+    },
+    {
+        "key": "qwen3.5-4b",
+        "name": "Qwen3.5-4B",
+        "full": "Ayansk11/FinSent-CoT-Qwen3.5-4B",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q8_0",
+        },
+    },
+    {
+        "key": "qwen3.5-9b",
+        "name": "Qwen3.5-9B",
+        "full": "Ayansk11/FinSent-CoT-Qwen3.5-9B",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q8_0",
+        },
+    },
 ]
 
 COLLECTION_TITLE = "FinSent-CoT"
 COLLECTION_DESCRIPTION = (
     "Financial sentiment analysis with chain-of-thought reasoning. "
-    "6 small models fine-tuned with SFT + GRPO on 16.9K balanced samples "
-    "(positive/negative/neutral). Each model available in full-precision HF "
-    "weights and 3 GGUF quantizations (Q4_K_M, Q5_K_M, Q8_0) for "
-    "Ollama/llama.cpp deployment on consumer hardware."
+    "10 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM) fine-tuned "
+    "with SFT + GRPO on 16.9K balanced samples (positive/negative/neutral). "
+    "Each model available in full-precision HF weights and 3 GGUF "
+    "quantizations (Q4_K_M, Q5_K_M, Q8_0) for Ollama/llama.cpp deployment "
+    "on consumer hardware."
 )
 
 
