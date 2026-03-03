@@ -49,13 +49,18 @@ export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
 # Build llama.cpp if not present (needed for GGUF export)
-if [ ! -f llama.cpp/llama-quantize ] && [ ! -f llama.cpp/quantize ]; then
+# NOTE: runs in subshell (...) so cd cannot leak into the parent script
+if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     if [ ! -d llama.cpp ]; then
         echo "Cloning llama.cpp..."
         git clone --depth 1 https://github.com/ggerganov/llama.cpp
     fi
-    echo "Building llama.cpp..."
-    cd llama.cpp && make -j16 llama-quantize 2>&1 | tail -3 && cd ..
+    echo "Building llama.cpp (cmake)..."
+    (
+        cd llama.cpp
+        cmake -B build -DGGML_CUDA=ON 2>&1 | tail -5
+        cmake --build build --target llama-quantize -j16 2>&1 | tail -5
+    )
 fi
 
 # Run full pipeline
