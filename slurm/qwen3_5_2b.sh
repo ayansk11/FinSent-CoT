@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=finsent-qwen3.5-2b
 #SBATCH --account=r01510
-#SBATCH --partition=hopper
-#SBATCH --qos=hopper
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
