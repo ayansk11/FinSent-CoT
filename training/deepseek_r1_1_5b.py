@@ -59,6 +59,10 @@ HF_REPOS = {
     "Q8_0":   "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q8_0",
 }
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
+MLX_REPOS = {
+    4: "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-MLX-4bit",
+    8: "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-MLX-8bit",
+}
 
 # Paths
 SFT_OUTPUT = f"./checkpoints/sft/{MODEL_KEY}"
@@ -181,23 +185,42 @@ def run_sft():
 
 
 def _patch_masked_batch_mean():
-    import torch
-    def _fixed(x, completion_mask):
-        min_len = min(x.shape[-1], completion_mask.shape[-1])
-        x = x[..., :min_len]; completion_mask = completion_mask[..., :min_len]
-        return (x * completion_mask).sum(dim=-1) / completion_mask.sum(dim=-1).clamp(min=1)
-    patched = 0
-    for mod in list(sys.modules.values()):
-        if mod is None: continue
-        if hasattr(mod, 'masked_batch_mean'): setattr(mod, 'masked_batch_mean', _fixed); patched += 1
-        for attr_name in dir(mod):
-            try:
-                attr = getattr(mod, attr_name)
-                for fn in [attr, getattr(attr, '__func__', None), getattr(attr, '__wrapped__', None)]:
-                    if fn and hasattr(fn, '__globals__') and 'masked_batch_mean' in getattr(fn, '__globals__', {}):
-                        fn.__globals__['masked_batch_mean'] = _fixed; patched += 1
-            except Exception: pass
-    print(f"  [Patch] masked_batch_mean: {patched} locations")
+    """Fix Unsloth's masked_batch_mean tensor mismatch (closure — must patch source file)."""
+    import importlib
+    import glob as _glob
+    OLD = "return (x * completion_mask).sum() / completion_token_count"
+    NEW = (
+        "_n = min(x.shape[-1], completion_mask.shape[-1]); "
+        "return (x[..., :_n] * completion_mask[..., :_n]).sum() / "
+        "completion_mask[..., :_n].sum().clamp(min=1)"
+    )
+    cache_mod = None
+    for name, mod in list(sys.modules.items()):
+        if mod is None:
+            continue
+        src = getattr(mod, '__file__', '') or ''
+        if 'GRPOTrainer' in os.path.basename(src) and 'compiled_cache' in src:
+            cache_mod = mod
+            break
+    if cache_mod is None:
+        print("  [Patch] Unsloth GRPOTrainer cache not found — skipping")
+        return None
+    filepath = cache_mod.__file__
+    with open(filepath, 'r') as f:
+        content = f.read()
+    count = content.count(OLD)
+    if count == 0:
+        print(f"  [Patch] {filepath} — already patched")
+        return None
+    with open(filepath, 'w') as f:
+        f.write(content.replace(OLD, NEW))
+    pycache = os.path.join(os.path.dirname(filepath), '__pycache__')
+    if os.path.isdir(pycache):
+        for pyc in _glob.glob(os.path.join(pycache, '*.pyc')):
+            os.remove(pyc)
+    importlib.reload(cache_mod)
+    print(f"  [Patch] Fixed {count} masked_batch_mean occurrence(s) in {filepath}")
+    return getattr(cache_mod, 'GRPOTrainer', None) or getattr(cache_mod, 'UnslothGRPOTrainer', None)
 
 
 def run_grpo():
@@ -210,7 +233,9 @@ def run_grpo():
     from rewards import sentiment_correctness_reward, format_compliance_reward, reasoning_quality_reward, consistency_reward
     from callbacks import RewardEarlyStoppingCallback
 
-    _patch_masked_batch_mean()
+    _patched = _patch_masked_batch_mean()
+    if _patched is not None:
+        GRPOTrainer = _patched
 
     print("=" * 70)
     print(f"FinSent-CoT GRPO — {SHORT_NAME}")
@@ -312,6 +337,22 @@ def run_export(upload=False):
     print(f"\nSaving merged HF weights...")
     model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
 
+    # MLX export (for vllm-mlx / mlx-lm / mlx-vlm compatibility)
+    try:
+        from mlx_lm import convert as mlx_convert
+        for q_bits, repo in MLX_REPOS.items():
+            mlx_dir = output_dir / f"mlx-{q_bits}bit"
+            print(f"\n  Converting to MLX {q_bits}-bit...")
+            start = time.time()
+            mlx_convert(hf_path=str(merged_dir), mlx_path=str(mlx_dir), quantize=True, q_bits=q_bits)
+            elapsed = time.time() - start
+            mlx_size = sum(os.path.getsize(str(f)) for f in mlx_dir.rglob("*") if f.is_file())
+            print(f"    -> {mlx_size / (1024**3):.2f} GB ({elapsed:.0f}s)")
+    except ImportError:
+        print("\n  [SKIP] mlx-lm not installed — MLX export skipped (run on Apple Silicon)")
+    except Exception as e:
+        print(f"\n  [WARN] MLX conversion failed: {e}")
+
     if upload:
         from huggingface_hub import HfApi
         api = HfApi()
@@ -324,6 +365,13 @@ def run_export(upload=False):
         api.create_repo(repo_id=HF_FULL, repo_type="model", exist_ok=True)
         api.upload_folder(folder_path=str(merged_dir), repo_id=HF_FULL, repo_type="model")
         print(f"  Uploaded HF weights -> {HF_FULL}")
+        # Upload MLX models
+        for q_bits, repo in MLX_REPOS.items():
+            mlx_dir = output_dir / f"mlx-{q_bits}bit"
+            if mlx_dir.exists():
+                api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
+                api.upload_folder(folder_path=str(mlx_dir), repo_id=repo, repo_type="model")
+                print(f"  Uploaded MLX-{q_bits}bit -> {repo}")
 
     wandb.finish()
     print(f"\nExport complete for {SHORT_NAME}!")

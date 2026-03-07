@@ -62,6 +62,10 @@ HF_REPOS = {
     "Q8_0":   "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q8_0",
 }
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
+MLX_REPOS = {
+    4: "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-MLX-4bit",
+    8: "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-MLX-8bit",
+}
 
 # Paths
 SFT_OUTPUT = f"./checkpoints/sft/{MODEL_KEY}"
@@ -256,6 +260,17 @@ def run_sft():
     dataset = Dataset.from_list(formatted)
     print(f"Loaded {len(dataset)} SFT samples")
 
+    # TRL compatibility: max_seq_length/dataset_text_field moved from
+    # SFTConfig to SFTTrainer in newer TRL versions
+    import inspect
+    _sft_sig = inspect.signature(SFTConfig).parameters
+    _cfg_kw, _tr_kw = {}, {}
+    for k, v in [("max_seq_length", MAX_SEQ_LENGTH), ("dataset_text_field", "text")]:
+        if k in _sft_sig:
+            _cfg_kw[k] = v
+        else:
+            _tr_kw[k] = v
+
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
@@ -271,13 +286,13 @@ def run_sft():
             save_steps=500,
             save_total_limit=2,
             bf16=True,
-            max_seq_length=MAX_SEQ_LENGTH,
-            dataset_text_field="text",
             report_to="wandb",
             run_name=wandb.run.name if wandb.run else "sft",
             seed=42,
+            **_cfg_kw,
         ),
         tokenizer=tokenizer,
+        **_tr_kw,
     )
 
     start = time.time()
@@ -493,6 +508,22 @@ def run_export(upload=False):
 
     print(f"  Merged weights saved ({size_mb} MB, {elapsed:.0f}s)")
 
+    # MLX export (for vllm-mlx / mlx-lm / mlx-vlm compatibility)
+    try:
+        from mlx_lm import convert as mlx_convert
+        for q_bits, repo in MLX_REPOS.items():
+            mlx_dir = output_dir / f"mlx-{q_bits}bit"
+            print(f"\n  Converting to MLX {q_bits}-bit...")
+            start = time.time()
+            mlx_convert(hf_path=str(merged_dir), mlx_path=str(mlx_dir), quantize=True, q_bits=q_bits)
+            elapsed = time.time() - start
+            mlx_size = sum(os.path.getsize(str(f)) for f in mlx_dir.rglob("*") if f.is_file())
+            print(f"    -> {mlx_size / (1024**3):.2f} GB ({elapsed:.0f}s)")
+    except ImportError:
+        print("\n  [SKIP] mlx-lm not installed — MLX export skipped (run on Apple Silicon)")
+    except Exception as e:
+        print(f"\n  [WARN] MLX conversion failed: {e}")
+
     wandb.summary.update({
         "merged_size_mb": size_mb,
         "export_time_sec": round(elapsed, 1),
@@ -517,6 +548,13 @@ def run_export(upload=False):
         for quant, repo in HF_REPOS.items():
             api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
             print(f"  Created repo {repo} (upload GGUF after manual conversion)")
+        # Upload MLX models
+        for q_bits, repo in MLX_REPOS.items():
+            mlx_dir = output_dir / f"mlx-{q_bits}bit"
+            if mlx_dir.exists():
+                api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
+                api.upload_folder(folder_path=str(mlx_dir), repo_id=repo, repo_type="model")
+                print(f"  Uploaded MLX-{q_bits}bit -> {repo}")
 
     wandb.finish()
 

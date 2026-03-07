@@ -66,6 +66,9 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
+# Ensure Unsloth can find pre-built llama.cpp for GGUF export
+export PATH="$PWD/llama.cpp/build/bin:$PATH"
+
 # Run full pipeline
 python training/mobilellm_r1_950m.py --phase all
 
