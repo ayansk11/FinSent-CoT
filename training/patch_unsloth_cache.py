@@ -149,8 +149,11 @@ def patch_file(filepath):
     if os.path.exists(pycache_dir):
         removed = 0
         for pyc in glob.glob(os.path.join(pycache_dir, "*.pyc")):
-            os.remove(pyc)
-            removed += 1
+            try:
+                os.remove(pyc)
+                removed += 1
+            except FileNotFoundError:
+                pass
         if removed:
             print(f"  Removed {removed} bytecode cache file(s)")
 
