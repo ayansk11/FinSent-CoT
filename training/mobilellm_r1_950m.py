@@ -271,6 +271,10 @@ def run_sft():
         else:
             _tr_kw[k] = v
 
+    # TRL >=0.24: tokenizer renamed to processing_class
+    _sft_trainer_params = inspect.signature(SFTTrainer.__init__).parameters
+    _tok_key = "tokenizer" if "tokenizer" in _sft_trainer_params else "processing_class"
+
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
@@ -291,7 +295,7 @@ def run_sft():
             seed=42,
             **_cfg_kw,
         ),
-        tokenizer=tokenizer,
+        **{_tok_key: tokenizer},
         **_tr_kw,
     )
 

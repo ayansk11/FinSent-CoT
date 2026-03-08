@@ -49,6 +49,9 @@ export WANDB_PROJECT=FinSent-CoT
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
+# Clear stale Unsloth compiled cache (may be from different TRL version)
+rm -rf "$TMPDIR/unsloth_compiled_cache"
+
 # Patch Unsloth compiled cache (fix masked_batch_mean tensor mismatch)
 python training/patch_unsloth_cache.py --generate
 

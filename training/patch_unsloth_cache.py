@@ -101,7 +101,10 @@ def patch_unsloth_stats():
         pycache_dir = os.path.join(os.path.dirname(utils_path), "__pycache__")
         if os.path.exists(pycache_dir):
             for pyc in glob.glob(os.path.join(pycache_dir, "*.pyc")):
-                os.remove(pyc)
+                try:
+                    os.remove(pyc)
+                except FileNotFoundError:
+                    pass
         print("  Patched get_statistics -> no-op")
         return True
 
