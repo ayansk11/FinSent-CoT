@@ -187,6 +187,7 @@ def run_sft():
 def _patch_masked_batch_mean():
     """Fix Unsloth's masked_batch_mean tensor mismatch (closure — must patch source file)."""
     import importlib
+    import importlib.util
     import glob as _glob
     OLD = "return (x * completion_mask).sum() / completion_token_count"
     NEW = (
@@ -218,6 +219,9 @@ def _patch_masked_batch_mean():
     if os.path.isdir(pycache):
         for pyc in _glob.glob(os.path.join(pycache, '*.pyc')):
             os.remove(pyc)
+    # Unsloth loads cache dynamically — set __spec__ so importlib.reload works
+    if getattr(cache_mod, '__spec__', None) is None:
+        cache_mod.__spec__ = importlib.util.spec_from_file_location(cache_mod.__name__, filepath)
     importlib.reload(cache_mod)
     print(f"  [Patch] Fixed {count} masked_batch_mean occurrence(s) in {filepath}")
     return getattr(cache_mod, 'GRPOTrainer', None) or getattr(cache_mod, 'UnslothGRPOTrainer', None)
