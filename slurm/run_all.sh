@@ -30,26 +30,26 @@ submit() {
 
 if [ "$MODE" = "--small" ] || [ "$MODE" = "all" ] || [ "$MODE" = "--all" ]; then
     echo "Small models:"
-    submit slurm/qwen3_0_6b.sh       "Qwen3-0.6B      (64G, 12h)"
-    submit slurm/deepseek_r1_1_5b.sh  "DeepSeek-R1-1.5B (64G, 14h)"
-    submit slurm/mobilellm_r1_950m.sh "MobileLLM-R1-950M (64G, 14h)"
+    submit slurm/qwen3_0_6b.sh       "Qwen3-0.6B       (12h)"
+    submit slurm/deepseek_r1_1_5b.sh  "DeepSeek-R1-1.5B  (14h)"
+    submit slurm/mobilellm_r1_950m.sh "MobileLLM-R1-950M  (14h)"
     echo ""
 fi
 
 if [ "$MODE" = "--large" ] || [ "$MODE" = "all" ] || [ "$MODE" = "--all" ]; then
     echo "Large models:"
-    submit slurm/qwen3_1_7b.sh "Qwen3-1.7B (64G, 14h)"
-    submit slurm/qwen3_4b.sh   "Qwen3-4B   (80G, 16h)"
-    submit slurm/qwen3_8b.sh   "Qwen3-8B   (80G, 20h)"
+    submit slurm/qwen3_1_7b.sh "Qwen3-1.7B (14h)"
+    submit slurm/qwen3_4b.sh   "Qwen3-4B   (16h)"
+    submit slurm/qwen3_8b.sh   "Qwen3-8B   (20h)"
     echo ""
 fi
 
 if [ "$MODE" = "--qwen3.5" ] || [ "$MODE" = "--all" ]; then
     echo "Qwen3.5 models:"
-    submit slurm/qwen3_5_0_8b.sh "Qwen3.5-0.8B (64G, 12h)"
-    submit slurm/qwen3_5_2b.sh   "Qwen3.5-2B   (64G, 14h)"
-    submit slurm/qwen3_5_4b.sh   "Qwen3.5-4B   (80G, 16h)"
-    submit slurm/qwen3_5_9b.sh   "Qwen3.5-9B   (80G, 20h)"
+    submit slurm/qwen3_5_0_8b.sh "Qwen3.5-0.8B (12h)"
+    submit slurm/qwen3_5_2b.sh   "Qwen3.5-2B   (14h)"
+    submit slurm/qwen3_5_4b.sh   "Qwen3.5-4B   (16h)"
+    submit slurm/qwen3_5_9b.sh   "Qwen3.5-9B   (20h)"
     echo ""
 fi
 
