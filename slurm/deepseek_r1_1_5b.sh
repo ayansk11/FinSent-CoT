@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --mem=0
 #SBATCH --time=14:00:00
 #SBATCH --output=logs/deepseek_r1_1_5b_%j.out
 #SBATCH --error=logs/deepseek_r1_1_5b_%j.err

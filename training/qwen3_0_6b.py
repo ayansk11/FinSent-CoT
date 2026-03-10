@@ -149,7 +149,7 @@ def run_sft():
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=BASE_MODEL, max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None, load_in_4bit=True,
+        dtype=torch.bfloat16, load_in_4bit=True,
     )
     model = FastLanguageModel.get_peft_model(
         model, r=SFT_LORA_R, target_modules=TARGET_MODULES,
@@ -246,10 +246,14 @@ def _patch_masked_batch_mean():
     if os.path.isdir(pycache):
         for pyc in _glob.glob(os.path.join(pycache, '*.pyc')):
             os.remove(pyc)
-    # Unsloth loads cache dynamically — set __spec__ so importlib.reload works
-    if getattr(cache_mod, '__spec__', None) is None:
-        cache_mod.__spec__ = importlib.util.spec_from_file_location(cache_mod.__name__, filepath)
-    importlib.reload(cache_mod)
+    # Robust manual reload — importlib.reload fails for dynamically-loaded modules
+    mod_name = cache_mod.__name__
+    sys.modules.pop(mod_name, None)
+    loader = importlib.machinery.SourceFileLoader(mod_name, filepath)
+    spec = importlib.util.spec_from_loader(mod_name, loader, origin=filepath)
+    cache_mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = cache_mod
+    spec.loader.exec_module(cache_mod)
     print(f"  [Patch] Fixed {count} masked_batch_mean occurrence(s) in {filepath}")
     return getattr(cache_mod, 'GRPOTrainer', None) or getattr(cache_mod, 'UnslothGRPOTrainer', None)
 
@@ -294,7 +298,7 @@ def run_grpo():
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=SFT_OUTPUT, max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None, load_in_4bit=True,
+        dtype=torch.bfloat16, load_in_4bit=True,
     )
 
     data_path = Path(DATASET_DIR) / "grpo_train.jsonl"
@@ -374,7 +378,7 @@ def run_export(upload: bool = False):
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None, load_in_4bit=True,
+        dtype=torch.bfloat16, load_in_4bit=True,
     )
 
     exports = []

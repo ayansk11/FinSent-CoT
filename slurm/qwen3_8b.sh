@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=80G
+#SBATCH --mem=0
 #SBATCH --time=20:00:00
 #SBATCH --output=logs/qwen3_8b_%j.out
 #SBATCH --error=logs/qwen3_8b_%j.err

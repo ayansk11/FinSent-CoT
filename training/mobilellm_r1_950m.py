@@ -260,18 +260,8 @@ def run_sft():
     dataset = Dataset.from_list(formatted)
     print(f"Loaded {len(dataset)} SFT samples")
 
-    # TRL compatibility: max_seq_length/dataset_text_field moved from
-    # SFTConfig to SFTTrainer in newer TRL versions
-    import inspect
-    _sft_sig = inspect.signature(SFTConfig).parameters
-    _cfg_kw, _tr_kw = {}, {}
-    for k, v in [("max_seq_length", MAX_SEQ_LENGTH), ("dataset_text_field", "text")]:
-        if k in _sft_sig:
-            _cfg_kw[k] = v
-        else:
-            _tr_kw[k] = v
-
     # TRL >=0.24: tokenizer renamed to processing_class
+    import inspect
     _sft_trainer_params = inspect.signature(SFTTrainer.__init__).parameters
     _tok_key = "tokenizer" if "tokenizer" in _sft_trainer_params else "processing_class"
 
@@ -280,6 +270,8 @@ def run_sft():
         train_dataset=dataset,
         args=SFTConfig(
             output_dir=SFT_OUTPUT,
+            max_seq_length=MAX_SEQ_LENGTH,
+            dataset_text_field="text",
             num_train_epochs=SFT_EPOCHS,
             per_device_train_batch_size=SFT_BATCH_SIZE,
             gradient_accumulation_steps=SFT_GRAD_ACCUM,
@@ -293,10 +285,8 @@ def run_sft():
             report_to="wandb",
             run_name=wandb.run.name if wandb.run else "sft",
             seed=42,
-            **_cfg_kw,
         ),
         **{_tok_key: tokenizer},
-        **_tr_kw,
     )
 
     start = time.time()
