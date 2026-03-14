@@ -121,6 +121,7 @@ PARAMETER num_predict 512
 def run_sft():
     import unsloth  # noqa: F401
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from datasets import Dataset
     from unsloth import FastLanguageModel
@@ -261,6 +262,7 @@ def _patch_masked_batch_mean():
 def run_grpo():
     import unsloth  # noqa: F401
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from datasets import Dataset
     from unsloth import FastLanguageModel
@@ -383,6 +385,7 @@ def run_grpo():
 def run_export(upload: bool = False):
     import unsloth  # noqa: F401
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from unsloth import FastLanguageModel
 

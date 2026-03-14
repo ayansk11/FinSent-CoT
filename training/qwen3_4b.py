@@ -495,6 +495,7 @@ def run_export(upload: bool = False):
     """Export GGUF quantizations and optionally upload to HuggingFace."""
     import unsloth  # noqa: F401
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from unsloth import FastLanguageModel
 

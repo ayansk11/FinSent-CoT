@@ -129,7 +129,7 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
         quantization_config=bnb_config,
         device_map={"": 0},
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
     model = prepare_model_for_kbit_training(model)
 
@@ -169,7 +169,7 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
         quantization_config=bnb_config,
         device_map={"": 0},
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
     # Merge SFT LoRA, then add fresh GRPO LoRA
     model = model.merge_and_unload()
@@ -270,7 +270,7 @@ def run_sft():
         train_dataset=dataset,
         args=SFTConfig(
             output_dir=SFT_OUTPUT,
-            max_seq_length=MAX_SEQ_LENGTH,
+            max_length=MAX_SEQ_LENGTH,
             dataset_text_field="text",
             num_train_epochs=SFT_EPOCHS,
             per_device_train_batch_size=SFT_BATCH_SIZE,
@@ -484,7 +484,7 @@ def run_export(upload=False):
         GRPO_OUTPUT,
         device_map={"": 0},
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
     model = model.merge_and_unload()
     tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
