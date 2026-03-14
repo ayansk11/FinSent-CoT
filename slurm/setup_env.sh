@@ -141,17 +141,18 @@ else:
     exit(1)
 PYEOF
 
-# ─── Verify training data exists ─────────────────────────────────────────
+# ─── Download training data from HuggingFace if missing ──────────────────
 echo ""
 echo "=== Checking training data ==="
-for f in validated/sft_train.jsonl validated/grpo_train.jsonl; do
-    if [ -f "$f" ]; then
+if [ ! -f validated/sft_train.jsonl ] || [ ! -f validated/grpo_train.jsonl ]; then
+    echo "  Downloading dataset from Ayansk11/FinSent-CoT-Dataset..."
+    python data_generation/download_dataset.py
+else
+    for f in validated/sft_train.jsonl validated/grpo_train.jsonl; do
         lines=$(wc -l < "$f")
         echo "  OK: $f ($lines lines)"
-    else
-        echo "  MISSING: $f"
-    fi
-done
+    done
+fi
 
 # ─── Verify training scripts exist ────────────────────────────────────
 echo ""
