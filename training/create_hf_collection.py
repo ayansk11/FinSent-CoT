@@ -18,10 +18,14 @@ from huggingface_hub import HfApi
 
 DATASET_REPO = "Ayansk11/FinSent-CoT-Dataset"
 
+# Models ordered by family, then ascending parameter count.
+# This order is used directly in the HF collection for easy navigation.
 MODELS = [
+    # ── Qwen3 family (oldest → largest) ──────────────────────────────────
     {
         "key": "qwen3-0.6b",
         "name": "Qwen3-0.6B",
+        "family": "Qwen3",
         "full": "Ayansk11/FinSent-CoT-Qwen3-0.6B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q4_K_M",
@@ -32,6 +36,7 @@ MODELS = [
     {
         "key": "qwen3-1.7b",
         "name": "Qwen3-1.7B",
+        "family": "Qwen3",
         "full": "Ayansk11/FinSent-CoT-Qwen3-1.7B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q4_K_M",
@@ -42,6 +47,7 @@ MODELS = [
     {
         "key": "qwen3-4b",
         "name": "Qwen3-4B",
+        "family": "Qwen3",
         "full": "Ayansk11/FinSent-CoT-Qwen3-4B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-4B-Q4_K_M",
@@ -52,6 +58,7 @@ MODELS = [
     {
         "key": "qwen3-8b",
         "name": "Qwen3-8B",
+        "family": "Qwen3",
         "full": "Ayansk11/FinSent-CoT-Qwen3-8B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-8B-Q4_K_M",
@@ -59,29 +66,11 @@ MODELS = [
             "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3-8B-Q8_0",
         },
     },
-    {
-        "key": "deepseek-r1-1.5b",
-        "name": "DeepSeek-R1-1.5B",
-        "full": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B",
-        "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q8_0",
-        },
-    },
-    {
-        "key": "mobilellm-r1-950m",
-        "name": "MobileLLM-R1-950M",
-        "full": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M",
-        "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q8_0",
-        },
-    },
+    # ── Qwen3.5 family (newest, ascending) ───────────────────────────────
     {
         "key": "qwen3.5-0.8b",
         "name": "Qwen3.5-0.8B",
+        "family": "Qwen3.5",
         "full": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q4_K_M",
@@ -92,6 +81,7 @@ MODELS = [
     {
         "key": "qwen3.5-2b",
         "name": "Qwen3.5-2B",
+        "family": "Qwen3.5",
         "full": "Ayansk11/FinSent-CoT-Qwen3.5-2B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q4_K_M",
@@ -102,6 +92,7 @@ MODELS = [
     {
         "key": "qwen3.5-4b",
         "name": "Qwen3.5-4B",
+        "family": "Qwen3.5",
         "full": "Ayansk11/FinSent-CoT-Qwen3.5-4B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q4_K_M",
@@ -112,11 +103,36 @@ MODELS = [
     {
         "key": "qwen3.5-9b",
         "name": "Qwen3.5-9B",
+        "family": "Qwen3.5",
         "full": "Ayansk11/FinSent-CoT-Qwen3.5-9B",
         "gguf": {
             "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q4_K_M",
             "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q5_K_M",
             "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q8_0",
+        },
+    },
+    # ── DeepSeek family ──────────────────────────────────────────────────
+    {
+        "key": "deepseek-r1-1.5b",
+        "name": "DeepSeek-R1-1.5B",
+        "family": "DeepSeek",
+        "full": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q8_0",
+        },
+    },
+    # ── MobileLLM family ─────────────────────────────────────────────────
+    {
+        "key": "mobilellm-r1-950m",
+        "name": "MobileLLM-R1-950M",
+        "family": "MobileLLM",
+        "full": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M",
+        "gguf": {
+            "Q4_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q8_0",
         },
     },
 ]
@@ -138,24 +154,59 @@ def main():
     parser.add_argument("--namespace", default="Ayansk11", help="HF namespace")
     args = parser.parse_args()
 
-    # Build ordered list of all repos to add
+    # Build ordered list of all repos to add.
+    # Order: Dataset → Full-precision (by family, ascending size) → GGUF (same order, Q8→Q5→Q4)
+    # This makes the collection easy to browse: best-quality formats first,
+    # then progressively smaller quantizations grouped by model.
     items = []
 
-    # Dataset first
-    items.append({"repo_id": DATASET_REPO, "type": "dataset", "note": "Training dataset"})
+    # 1. Dataset
+    items.append({"repo_id": DATASET_REPO, "type": "dataset",
+                  "note": "📊 Training dataset — 50.8K balanced samples (positive/negative/neutral)"})
 
-    # Then each model: full-precision, then GGUF variants
+    # 2. Full-precision models (grouped by family, ascending size)
     for m in MODELS:
-        items.append({"repo_id": m["full"], "type": "model", "note": f"{m['name']} full-precision"})
-        for quant, repo in m["gguf"].items():
-            items.append({"repo_id": repo, "type": "model", "note": f"{m['name']} {quant} GGUF"})
+        items.append({"repo_id": m["full"], "type": "model",
+                      "note": f"🔬 {m['name']} — Full precision (SafeTensors) for fine-tuning & vLLM inference"})
+
+    # 3. GGUF quantizations (same model order, best quality first: Q8 → Q5 → Q4)
+    quant_order = ["Q8_0", "Q5_K_M", "Q4_K_M"]
+    quant_labels = {
+        "Q8_0": "8-bit — best quality",
+        "Q5_K_M": "5-bit — balanced",
+        "Q4_K_M": "4-bit — smallest/fastest",
+    }
+    for quant in quant_order:
+        for m in MODELS:
+            if quant in m["gguf"]:
+                items.append({"repo_id": m["gguf"][quant], "type": "model",
+                              "note": f"📦 {m['name']} GGUF {quant} — {quant_labels[quant]}"})
 
     print(f"FinSent-CoT Collection")
-    print(f"  Total items: {len(items)} (1 dataset + {len(MODELS)} full + {len(MODELS) * 3} GGUF)")
+    print(f"  Total items: {len(items)} (1 dataset + {len(MODELS)} full-precision + {len(MODELS) * 3} GGUF)")
     print()
 
+    # Pretty-print with section headers
+    section = None
     for i, item in enumerate(items, 1):
-        print(f"  {i:2d}. [{item['type']:7s}] {item['repo_id']}")
+        note = item.get("note", "")
+        # Detect section transitions based on note prefix
+        if "Training dataset" in note and section != "dataset":
+            section = "dataset"
+            print("  ── Dataset ──────────────────────────────────────────")
+        elif "Full precision" in note and section != "full":
+            section = "full"
+            print("  ── Full-Precision Models (SafeTensors) ──────────────")
+        elif "GGUF Q8_0" in note and section != "gguf-q8":
+            section = "gguf-q8"
+            print("  ── GGUF Q8_0 (8-bit, best quality) ──────────────────")
+        elif "GGUF Q5_K_M" in note and section != "gguf-q5":
+            section = "gguf-q5"
+            print("  ── GGUF Q5_K_M (5-bit, balanced) ────────────────────")
+        elif "GGUF Q4_K_M" in note and section != "gguf-q4":
+            section = "gguf-q4"
+            print("  ── GGUF Q4_K_M (4-bit, smallest) ────────────────────")
+        print(f"  {i:2d}. {item['repo_id']}")
 
     if args.dry_run:
         print(f"\n  --dry-run: No collection created.")
