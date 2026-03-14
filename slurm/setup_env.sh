@@ -5,8 +5,10 @@
 # Run this ONCE on a GPU node BEFORE submitting training jobs.
 # It creates/updates the venv with all required dependencies.
 #
+# Target: Big Red 200 — A100 GPUs (gpu partition)
+#
 # Usage (interactive GPU session):
-#   srun --account=r01510 --partition=hopper --qos=hopper \
+#   srun --account=r01510 --partition=gpu \
 #        --gpus-per-node=1 --mem=32G --time=01:00:00 --pty bash
 #   bash slurm/setup_env.sh
 #
@@ -15,8 +17,7 @@
 # ============================================================
 #SBATCH --job-name=finsent-setup
 #SBATCH --account=r01510
-#SBATCH --partition=hopper
-#SBATCH --qos=hopper
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
@@ -44,9 +45,9 @@ export PIP_CACHE_DIR=/N/scratch/ayshaikh/.cache/pip
 mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" \
          "$TMPDIR" "$PIP_CACHE_DIR"
 
-# ─── Load modules ────────────────────────────────────────────────────────
-module load python/gpu/3.11.5
-module load cudatoolkit/12.1
+# ─── Load modules (must match training scripts: python/gpu/3.12.5 + cudatoolkit/12.6)
+module load python/gpu/3.12.5
+module load cudatoolkit/12.6
 
 cd /N/scratch/ayshaikh/FinSent-CoT
 mkdir -p logs
@@ -66,10 +67,10 @@ echo ""
 # ─── Upgrade pip first ───────────────────────────────────────────────────
 pip install --upgrade pip setuptools wheel
 
-# ─── Install PyTorch (CUDA 12.1 compatible) ──────────────────────────────
+# ─── Install PyTorch (CUDA 12.6 compatible — cu124 wheels work with 12.6)
 echo ""
 echo "=== Installing PyTorch ==="
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Verify CUDA
 python -c "
@@ -103,7 +104,7 @@ pip install \
 # ─── Install Unsloth (AFTER torch + deps are stable) ────────────────────
 echo ""
 echo "=== Installing Unsloth ==="
-pip install "unsloth[cu121-torch250] @ git+https://github.com/unslothai/unsloth.git"
+pip install "unsloth[cu124-torch260] @ git+https://github.com/unslothai/unsloth.git"
 
 # ─── Verify ALL dependencies ─────────────────────────────────────────────
 echo ""
@@ -152,22 +153,22 @@ for f in validated/sft_train.jsonl validated/grpo_train.jsonl; do
     fi
 done
 
-# ─── Verify model_configs import works ────────────────────────────────────
+# ─── Verify training scripts exist ────────────────────────────────────
 echo ""
 echo "=== Checking training scripts ==="
-python << 'PYEOF'
-import sys
-sys.path.insert(0, 'training')
-from model_configs import MODEL_ORDER, get_config
-print(f'  model_configs: {len(MODEL_ORDER)} models configured')
-for key in MODEL_ORDER:
-    cfg = get_config(key)
-    print(f'    - {key}: {cfg["base_model"]}')
-PYEOF
+for f in training/qwen3_0_6b.py training/qwen3_4b.py training/qwen3_8b.py \
+         training/deepseek_r1_1_5b.py training/mobilellm_r1_950m.py \
+         training/rewards.py training/callbacks.py; do
+    if [ -f "$f" ]; then
+        echo "  OK: $f"
+    else
+        echo "  MISSING: $f"
+    fi
+done
 
 echo ""
 echo "=== Setup Complete ==="
 echo "Date: $(date)"
 echo ""
 echo "You can now submit training jobs:"
-echo "  bash slurm/train_all.sh all"
+echo "  bash slurm/run_all.sh --all"

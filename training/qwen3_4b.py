@@ -494,6 +494,7 @@ def run_grpo():
 def run_export(upload: bool = False):
     """Export GGUF quantizations and optionally upload to HuggingFace."""
     import unsloth  # noqa: F401
+    import torch
     import wandb
     from unsloth import FastLanguageModel
 
