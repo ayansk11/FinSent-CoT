@@ -138,6 +138,24 @@ def run_sft():
                        "epochs": SFT_EPOCHS, "batch_size": SFT_BATCH_SIZE, "lr": SFT_LR,
                        "lora_r": SFT_LORA_R, "lora_alpha": SFT_LORA_ALPHA})
 
+    # Monkey-patch Qwen3.5 compute_3d_position_ids to handle empty delta tensor
+    # (transformers 5.2.0 bug: delta has size 0 when completions are empty)
+    try:
+        from transformers.models.qwen3_5 import modeling_qwen3_5 as _q35
+        _orig_3d = _q35.compute_3d_position_ids
+        def _safe_3d(*a, **kw):
+            try:
+                return _orig_3d(*a, **kw)
+            except RuntimeError:
+                import torch as _t
+                input_ids = a[0] if a else kw.get("input_ids")
+                bs, seq = input_ids.shape
+                return _t.arange(seq, device=input_ids.device).unsqueeze(0).expand(bs, -1)
+        _q35.compute_3d_position_ids = _safe_3d
+        print("  [Patch] Monkey-patched Qwen3.5 compute_3d_position_ids for SFT")
+    except (ImportError, AttributeError):
+        pass
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=BASE_MODEL, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=True)
     model = FastLanguageModel.get_peft_model(
