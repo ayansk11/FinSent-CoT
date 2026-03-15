@@ -144,6 +144,13 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
+    # Fix dtype mismatch: non-quantized layers (lm_head, embeddings) stay float32
+    # while BnB compute is bfloat16. Cast non-quantized layers to bf16.
+    for name, module in model.named_modules():
+        if hasattr(module, 'weight') and isinstance(module.weight, torch.nn.Parameter):
+            if module.weight.dtype == torch.float32 and not hasattr(module.weight, 'quant_state'):
+                module.to(torch.bfloat16)
+
     return model, tokenizer
 
 
