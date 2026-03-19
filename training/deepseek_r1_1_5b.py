@@ -12,6 +12,7 @@ Usage:
     python deepseek_r1_1_5b.py --phase export       # Export only
 """
 
+import a100_compat  # noqa: F401 — must be before unsloth (patches addmm_ for A100)
 import argparse
 import json
 import os

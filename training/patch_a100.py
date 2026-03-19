@@ -109,6 +109,77 @@ def patch_compute_3d_position_ids():
     return True
 
 
+def patch_llama_cpp_install():
+    """Fix Unsloth GGUF export on SUSE Linux (no apt-get).
+
+    Unsloth's save_pretrained_gguf() calls install_llama_cpp() which tries
+    to run apt-get. BigRed200 uses SUSE Linux (no apt-get). The SLURM script
+    pre-builds llama.cpp and adds it to PATH, so we patch install_llama_cpp
+    to return early when the binary already exists.
+    """
+    import shutil
+
+    try:
+        import unsloth_zoo.llama_cpp as _mod
+        fpath = _mod.__file__
+    except ImportError:
+        print("[patch_a100] unsloth_zoo.llama_cpp not available — skipping")
+        return False
+
+    with open(fpath, "r") as f:
+        content = f.read()
+
+    patched_marker = "# A100_PATCH: skip if llama-quantize in PATH"
+    if patched_marker in content:
+        print("[patch_a100] install_llama_cpp — already patched")
+        return True
+
+    old = "def install_llama_cpp("
+    if old not in content:
+        print(f"[patch_a100] WARNING: install_llama_cpp not found in {fpath}")
+        return False
+
+    # Find function def and insert early-return at start of body
+    idx = content.index(old)
+    # Find the colon that ends the function signature (may span multiple lines)
+    colon_idx = content.index("):", idx) + 1
+    nl_idx = content.index("\n", colon_idx)
+    body_start = nl_idx + 1
+
+    # Detect body indentation
+    rest = content[body_start:]
+    indent = ""
+    for ch in rest:
+        if ch in (" ", "\t"):
+            indent += ch
+        else:
+            break
+
+    # Skip docstring if present
+    insert_at = body_start
+    stripped = rest.lstrip()
+    if stripped.startswith('"""') or stripped.startswith("'''"):
+        quote = stripped[:3]
+        close = content.index(quote, insert_at + len(indent) + 3)
+        insert_at = content.index("\n", close) + 1
+
+    early_return = (
+        f"{indent}{patched_marker}\n"
+        f"{indent}import shutil as _shutil\n"
+        f"{indent}if _shutil.which('llama-quantize'):\n"
+        f"{indent}    print('[patch_a100] llama-quantize in PATH — skip install')\n"
+        f"{indent}    return _shutil.which('llama-quantize')\n"
+    )
+
+    new_content = content[:insert_at] + early_return + content[insert_at:]
+    with open(fpath, "w") as f:
+        f.write(new_content)
+
+    _clear_pycache(fpath, "llama_cpp")
+    print(f"[patch_a100] Patched install_llama_cpp in {fpath}")
+    return True
+
+
 def main():
     print("=" * 50)
     print("A100 Compatibility Patches")
@@ -117,6 +188,7 @@ def main():
     results = []
     results.append(("matmul_lora", patch_matmul_lora()))
     results.append(("compute_3d_position_ids", patch_compute_3d_position_ids()))
+    results.append(("install_llama_cpp", patch_llama_cpp_install()))
 
     print("-" * 50)
     for name, ok in results:

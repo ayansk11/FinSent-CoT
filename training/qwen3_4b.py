@@ -12,6 +12,7 @@ Usage:
     python qwen3_4b.py --phase export       # Export only (requires GRPO checkpoint)
 """
 
+import a100_compat  # noqa: F401 — must be before unsloth (patches addmm_ for A100)
 import argparse
 import json
 import os

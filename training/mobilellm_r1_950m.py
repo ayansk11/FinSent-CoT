@@ -209,6 +209,7 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
 
 def run_sft():
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from datasets import Dataset
     from trl import SFTConfig, SFTTrainer
@@ -322,6 +323,7 @@ def run_sft():
 
 def run_grpo():
     import torch
+    torch.set_autocast_gpu_dtype(torch.bfloat16)  # A100 fix: autocast defaults to fp16
     import wandb
     from datasets import Dataset
     from trl import GRPOConfig, GRPOTrainer

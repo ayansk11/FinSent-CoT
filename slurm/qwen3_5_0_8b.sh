@@ -50,20 +50,13 @@ export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
 # Clear stale Unsloth compiled cache (may be from different TRL version)
-rm -rf "$TMPDIR/unsloth_compiled_cache"
+rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 
 # Patch Unsloth compiled cache (fix masked_batch_mean tensor mismatch)
 python training/patch_unsloth_cache.py --generate
 
-# A100 compatibility patches (matmul_lora dtype fix + Qwen3.5 position_ids fix)
+# A100 compatibility patches (position_ids fix + llama.cpp install fix)
 python training/patch_a100.py
-
-# A100 fix: patch Unsloth matmul_lora dtype mismatch (fp16 vs bf16 in autocast)
-_UNSLOTH_UTILS="venv/lib/python3.12/site-packages/unsloth/kernels/utils.py"
-if [ -f "$_UNSLOTH_UTILS" ] && grep -q 'out\.addmm_(XA, B\.to(dtype), alpha = s)' "$_UNSLOTH_UTILS"; then
-    sed -i 's/out\.addmm_(XA, B\.to(dtype), alpha = s)/_dt = out.dtype; out.addmm_(XA.to(_dt), B.to(_dt), alpha = s)/g' "$_UNSLOTH_UTILS"
-    echo "Patched Unsloth matmul_lora for A100 dtype compat"
-fi
 
 # Build llama.cpp if not present (needed for GGUF export)
 # NOTE: runs in subshell (...) so cd cannot leak into the parent script
