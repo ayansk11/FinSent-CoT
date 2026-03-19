@@ -109,6 +109,51 @@ def patch_compute_3d_position_ids():
     return True
 
 
+def patch_fast_lora_backward():
+    """Fix Unsloth fast_lora backward pass: torch.matmul(..., out=X) dtype mismatch.
+
+    On A100, autocast produces fp16 intermediates but saved tensors from forward
+    pass are float32. The backward pass uses torch.matmul(..., out=X) where X is
+    a saved float32 tensor but the matmul result is fp16. PyTorch refuses to write
+    fp16 into a float32 out tensor.
+
+    Fix: replace all `out = X if ctx.inplace else None` with `out = None` to
+    disable the inplace optimization. Performance impact is negligible (one extra
+    tensor allocation per backward call).
+    """
+    try:
+        import unsloth.kernels.fast_lora as _mod
+        fpath = _mod.__file__
+    except ImportError:
+        print("[patch_a100] unsloth.kernels.fast_lora not available — skipping")
+        return False
+
+    with open(fpath, "r") as f:
+        content = f.read()
+
+    patched_marker = "# A100_PATCH: disable inplace matmul in backward"
+    if patched_marker in content:
+        print("[patch_a100] fast_lora backward — already patched")
+        return True
+
+    # Pattern: out = X if ctx.inplace else None  (various variable names)
+    # Replace with: out = None  # A100_PATCH: disable inplace matmul in backward
+    pattern = r"out\s*=\s*\w+\s+if\s+ctx\.inplace\s+else\s+None"
+    replacement = "out = None  " + patched_marker
+
+    new_content, n = re.subn(pattern, replacement, content)
+    if n == 0:
+        print(f"[patch_a100] WARNING: fast_lora inplace pattern not found in {fpath}")
+        return False
+
+    with open(fpath, "w") as f:
+        f.write(new_content)
+
+    _clear_pycache(fpath, "fast_lora")
+    print(f"[patch_a100] Patched fast_lora backward ({n} occurrence(s)) in {fpath}")
+    return True
+
+
 def patch_llama_cpp_install():
     """Fix Unsloth GGUF export on SUSE Linux (no apt-get).
 
@@ -187,6 +232,7 @@ def main():
 
     results = []
     results.append(("matmul_lora", patch_matmul_lora()))
+    results.append(("fast_lora_backward", patch_fast_lora_backward()))
     results.append(("compute_3d_position_ids", patch_compute_3d_position_ids()))
     results.append(("install_llama_cpp", patch_llama_cpp_install()))
 

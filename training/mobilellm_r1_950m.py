@@ -144,12 +144,19 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    # Fix dtype mismatch: non-quantized layers (lm_head, embeddings) stay float32
-    # while BnB compute is bfloat16. Cast non-quantized layers to bf16.
+    # Fix dtype mismatch: lm_head and hidden_states may have different dtypes
+    # after prepare_model_for_kbit_training. Add a hook to auto-cast inputs.
+    def _dtype_align_hook(module, args):
+        x = args[0]
+        if hasattr(module, 'weight') and x.dtype != module.weight.dtype:
+            return (x.to(module.weight.dtype),) + args[1:]
+        return args
+
+    # Find lm_head (may be nested under PEFT wrappers)
     for name, module in model.named_modules():
-        if hasattr(module, 'weight') and isinstance(module.weight, torch.nn.Parameter):
-            if module.weight.dtype == torch.float32 and not hasattr(module.weight, 'quant_state'):
-                module.to(torch.bfloat16)
+        if name.endswith("lm_head"):
+            module.register_forward_pre_hook(_dtype_align_hook)
+            print(f"  [A100 fix] Registered dtype hook on {name} ({module.weight.dtype})")
 
     return model, tokenizer
 
@@ -193,12 +200,18 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    # Fix dtype mismatch: non-quantized layers (lm_head, embeddings) stay float32
-    # while BnB compute is bfloat16. Cast non-quantized layers to bf16.
+    # Fix dtype mismatch: lm_head and hidden_states may have different dtypes
+    # after prepare_model_for_kbit_training. Add a hook to auto-cast inputs.
+    def _dtype_align_hook(module, args):
+        x = args[0]
+        if hasattr(module, 'weight') and x.dtype != module.weight.dtype:
+            return (x.to(module.weight.dtype),) + args[1:]
+        return args
+
     for name, module in model.named_modules():
-        if hasattr(module, 'weight') and isinstance(module.weight, torch.nn.Parameter):
-            if module.weight.dtype == torch.float32 and not hasattr(module.weight, 'quant_state'):
-                module.to(torch.bfloat16)
+        if name.endswith("lm_head"):
+            module.register_forward_pre_hook(_dtype_align_hook)
+            print(f"  [A100 fix] Registered dtype hook on {name} ({module.weight.dtype})")
 
     return model, tokenizer
 
