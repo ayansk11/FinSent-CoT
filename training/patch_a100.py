@@ -21,6 +21,21 @@ def _clear_pycache(fpath, name_fragment):
                 os.remove(os.path.join(pycache_dir, f))
 
 
+def _find_package_file(package_name, subpath):
+    """Find a file inside an installed package without importing it.
+
+    Uses importlib.util.find_spec on the top-level package (safe even when
+    submodules have syntax errors) to locate site-packages, then joins subpath.
+    """
+    import importlib.util
+    spec = importlib.util.find_spec(package_name)
+    if spec is None or spec.submodule_search_locations is None:
+        return None
+    pkg_dir = spec.submodule_search_locations[0]
+    fpath = os.path.join(pkg_dir, *subpath.split("/"))
+    return fpath if os.path.isfile(fpath) else None
+
+
 def patch_matmul_lora():
     """Fix Unsloth matmul_lora: cast all addmm_ operands to out.dtype.
 
@@ -28,10 +43,8 @@ def patch_matmul_lora():
     mixes fp16 (XA from autocast) with bf16 (B.to(dtype) from model config).
     The in-place addmm_ bypasses autocast, so we must align dtypes manually.
     """
-    try:
-        import unsloth.kernels.utils as _mod
-        fpath = _mod.__file__
-    except ImportError:
+    fpath = _find_package_file("unsloth", "kernels/utils.py")
+    if fpath is None:
         print("[patch_a100] unsloth not installed — skipping matmul_lora")
         return False
 
@@ -120,28 +133,39 @@ def patch_fast_lora_backward():
     Fix: replace all `out = X if ctx.inplace else None` with `out = None` to
     disable the inplace optimization. Performance impact is negligible (one extra
     tensor allocation per backward call).
+
+    NOTE: We find fast_lora.py by path (not import) because a previous corrupted
+    patch may have left the file with a SyntaxError, making import impossible.
     """
-    try:
-        import unsloth.kernels.fast_lora as _mod
-        fpath = _mod.__file__
-    except ImportError:
-        print("[patch_a100] unsloth.kernels.fast_lora not available — skipping")
+    fpath = _find_package_file("unsloth", "kernels/fast_lora.py")
+    if fpath is None:
+        print("[patch_a100] unsloth.kernels.fast_lora not found — skipping")
         return False
 
     with open(fpath, "r") as f:
         content = f.read()
 
-    patched_marker = "# A100_PATCH: disable inplace matmul in backward"
-    if patched_marker in content:
-        print("[patch_a100] fast_lora backward — already patched")
+    # Repair damage from Round 4 (inline comment inside function call args
+    # turned: torch.matmul(..., out = None  # comment)  ← ) is commented out)
+    broken_marker = "# A100_PATCH: disable inplace matmul in backward"
+    if broken_marker in content:
+        content = content.replace("out = None  " + broken_marker, "out = None")
+        with open(fpath, "w") as f:
+            f.write(content)
+        _clear_pycache(fpath, "fast_lora")
+        print("[patch_a100] Repaired corrupted fast_lora.py from previous patch attempt")
+
+    # Check if already patched (original inplace pattern no longer present)
+    inplace_pattern = r"out\s*=\s*\w+\s+if\s+ctx\.inplace\s+else\s+None"
+    if not re.search(inplace_pattern, content):
+        print("[patch_a100] fast_lora backward — already patched (no inplace pattern found)")
         return True
 
-    # Pattern: out = X if ctx.inplace else None  (various variable names)
-    # Replace with: out = None  # A100_PATCH: disable inplace matmul in backward
-    pattern = r"out\s*=\s*\w+\s+if\s+ctx\.inplace\s+else\s+None"
-    replacement = "out = None  " + patched_marker
-
-    new_content, n = re.subn(pattern, replacement, content)
+    # Replace: out = X if ctx.inplace else None  →  out = None
+    # No inline comment — the pattern appears inside function calls like
+    # torch.matmul(..., out = X if ctx.inplace else None) and a # comment
+    # would swallow the closing paren.
+    new_content, n = re.subn(inplace_pattern, "out = None", content)
     if n == 0:
         print(f"[patch_a100] WARNING: fast_lora inplace pattern not found in {fpath}")
         return False
@@ -231,8 +255,10 @@ def main():
     print("=" * 50)
 
     results = []
-    results.append(("matmul_lora", patch_matmul_lora()))
+    # fast_lora_backward MUST run first — it repairs corrupted fast_lora.py
+    # which would block all subsequent unsloth imports via SyntaxError
     results.append(("fast_lora_backward", patch_fast_lora_backward()))
+    results.append(("matmul_lora", patch_matmul_lora()))
     results.append(("compute_3d_position_ids", patch_compute_3d_position_ids()))
     results.append(("install_llama_cpp", patch_llama_cpp_install()))
 

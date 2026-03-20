@@ -436,6 +436,11 @@ def run_grpo():
     elif "processing_class" in _grpo_params:
         trainer_kwargs["processing_class"] = tokenizer
 
+    # TRL GRPOTrainer expects model.warnings_issued dict, but PEFT-wrapped
+    # models don't expose it. Set it to avoid AttributeError.
+    if not hasattr(model, "warnings_issued"):
+        model.warnings_issued = {}
+
     trainer = GRPOTrainer(**trainer_kwargs)
 
     start = time.time()

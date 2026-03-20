@@ -54,11 +54,12 @@ mkdir -p "$WANDB_DIR"
 # Clear stale Unsloth compiled cache (may be from different TRL version)
 rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 
+# A100 compatibility patches — must run BEFORE patch_unsloth_cache (which
+# imports unsloth). If fast_lora.py is corrupted, this repairs it first.
+python training/patch_a100.py
+
 # Patch Unsloth compiled cache (fix masked_batch_mean tensor mismatch)
 python training/patch_unsloth_cache.py --generate
-
-# A100 compatibility patches (position_ids fix + llama.cpp install fix)
-python training/patch_a100.py
 
 # Build llama.cpp if not present (needed for GGUF export)
 # NOTE: runs in subshell (...) so cd cannot leak into the parent script
