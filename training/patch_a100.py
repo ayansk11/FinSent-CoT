@@ -192,8 +192,8 @@ def patch_llama_cpp_install():
         import unsloth_zoo.llama_cpp as _mod
         fpath = _mod.__file__
     except ImportError:
-        print("[patch_a100] unsloth_zoo.llama_cpp not available — skipping")
-        return False
+        print("[patch_a100] unsloth_zoo.llama_cpp not available — skipping (SLURM builds it separately)")
+        return True
 
     with open(fpath, "r") as f:
         content = f.read()
@@ -262,14 +262,18 @@ def main():
     results.append(("compute_3d_position_ids", patch_compute_3d_position_ids()))
     results.append(("install_llama_cpp", patch_llama_cpp_install()))
 
+    # install_llama_cpp is optional — SLURM scripts build llama.cpp separately
+    optional = {"install_llama_cpp"}
+
     print("-" * 50)
     for name, ok in results:
         status = "OK" if ok else "FAILED"
         print(f"  {name}: {status}")
     print("=" * 50)
 
-    if not all(ok for _, ok in results):
-        print("WARNING: Some patches failed — check output above")
+    critical_failed = [name for name, ok in results if not ok and name not in optional]
+    if critical_failed:
+        print(f"CRITICAL patches failed: {', '.join(critical_failed)}")
         sys.exit(1)
 
 

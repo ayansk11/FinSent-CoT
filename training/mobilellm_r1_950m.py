@@ -437,9 +437,16 @@ def run_grpo():
         trainer_kwargs["processing_class"] = tokenizer
 
     # TRL GRPOTrainer expects model.warnings_issued dict, but PEFT-wrapped
-    # models don't expose it. Set it to avoid AttributeError.
-    if not hasattr(model, "warnings_issued"):
-        model.warnings_issued = {}
+    # models delegate __getattr__ to the base model which lacks it.
+    # Set on the underlying model so PEFT's attribute chain finds it.
+    _base = model
+    while hasattr(_base, "base_model"):
+        _base = _base.base_model
+    if hasattr(_base, "model"):
+        _base = _base.model
+    if not hasattr(_base, "warnings_issued"):
+        _base.warnings_issued = {}
+    model.warnings_issued = _base.warnings_issued
 
     trainer = GRPOTrainer(**trainer_kwargs)
 
