@@ -25,17 +25,31 @@ import argparse
 import glob
 import os
 import sys
+import tempfile
 
 
 def find_cache_files():
-    """Find all Unsloth compiled cache files that may contain the bug."""
+    """Find all Unsloth compiled cache files that may contain the bug.
+
+    Searches multiple locations because newer Unsloth versions may write
+    the compiled cache to TMPDIR or XDG_CACHE_HOME instead of CWD.
+    """
+    search_dirs = [
+        ".",
+        os.environ.get("TMPDIR", ""),
+        os.environ.get("XDG_CACHE_HOME", ""),
+        tempfile.gettempdir(),
+        os.path.expanduser("~"),
+    ]
     patterns = [
         "unsloth_compiled_cache/UnslothGRPOTrainer.py",
         "unsloth_compiled_cache/*GRPOTrainer*.py",
     ]
     files = []
-    for p in patterns:
-        files.extend(glob.glob(p))
+    for d in search_dirs:
+        if d:
+            for p in patterns:
+                files.extend(glob.glob(os.path.join(d, p)))
     return list(set(files))
 
 
@@ -208,8 +222,9 @@ def main():
             sys.exit(1)
 
     if not files:
-        print("ERROR: Could not find Unsloth compiled cache after generation.")
-        sys.exit(1)
+        print("WARNING: Could not find Unsloth compiled cache after generation — skipping patch.")
+        print("  If masked_batch_mean tensor mismatch occurs during GRPO, re-run with cache.")
+        sys.exit(0)
 
     print(f"Found {len(files)} cache file(s)")
 

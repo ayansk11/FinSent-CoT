@@ -148,15 +148,19 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
     # after prepare_model_for_kbit_training. Add a hook to auto-cast inputs.
     def _dtype_align_hook(module, args):
         x = args[0]
-        if hasattr(module, 'weight') and x.dtype != module.weight.dtype:
-            return (x.to(module.weight.dtype),) + args[1:]
+        # Use compute_dtype (bfloat16) not weight.dtype (may be float32 for
+        # non-quantized lm_head), to stay consistent with autocast/bf16 training.
+        target_dtype = getattr(module, 'compute_dtype', None) or torch.bfloat16
+        if x.dtype != target_dtype:
+            return (x.to(target_dtype),) + args[1:]
         return args
 
     # Find lm_head (may be nested under PEFT wrappers)
     for name, module in model.named_modules():
         if name.endswith("lm_head"):
+            target = getattr(module, 'compute_dtype', None) or torch.bfloat16
             module.register_forward_pre_hook(_dtype_align_hook)
-            print(f"  [A100 fix] Registered dtype hook on {name} ({module.weight.dtype})")
+            print(f"  [A100 fix] Registered dtype hook on {name} (target={target})")
 
     return model, tokenizer
 
@@ -204,14 +208,18 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     # after prepare_model_for_kbit_training. Add a hook to auto-cast inputs.
     def _dtype_align_hook(module, args):
         x = args[0]
-        if hasattr(module, 'weight') and x.dtype != module.weight.dtype:
-            return (x.to(module.weight.dtype),) + args[1:]
+        # Use compute_dtype (bfloat16) not weight.dtype (may be float32 for
+        # non-quantized lm_head), to stay consistent with autocast/bf16 training.
+        target_dtype = getattr(module, 'compute_dtype', None) or torch.bfloat16
+        if x.dtype != target_dtype:
+            return (x.to(target_dtype),) + args[1:]
         return args
 
     for name, module in model.named_modules():
         if name.endswith("lm_head"):
+            target = getattr(module, 'compute_dtype', None) or torch.bfloat16
             module.register_forward_pre_hook(_dtype_align_hook)
-            print(f"  [A100 fix] Registered dtype hook on {name} ({module.weight.dtype})")
+            print(f"  [A100 fix] Registered dtype hook on {name} (target={target})")
 
     return model, tokenizer
 
