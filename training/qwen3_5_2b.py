@@ -259,6 +259,12 @@ def run_grpo():
     from datasets import Dataset
     from unsloth import FastLanguageModel
     from trl import GRPOConfig, GRPOTrainer
+    # Fix pickle identity for Unsloth dynamically-loaded GRPOConfig (checkpoint save)
+    for _n, _m in list(sys.modules.items()):
+        if _m and hasattr(_m, 'UnslothGRPOConfig'):
+            if 'compiled_cache' in getattr(_m, '__file__', '') or 'compiled_cache' in (_n or ''):
+                sys.modules['UnslothGRPOTrainer'] = _m
+                break
     from rewards import sentiment_correctness_reward, format_compliance_reward, reasoning_quality_reward, consistency_reward
     from callbacks import RewardEarlyStoppingCallback
 

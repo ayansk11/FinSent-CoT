@@ -58,6 +58,7 @@ python training/patch_a100.py
 
 # Patch Unsloth compiled cache (fix masked_batch_mean tensor mismatch)
 python training/patch_unsloth_cache.py --generate
+ln -sfn "$TMPDIR/unsloth_compiled_cache" ./unsloth_compiled_cache 2>/dev/null || true
 
 # Build llama.cpp if not present (needed for GGUF export)
 # NOTE: runs in subshell (...) so cd cannot leak into the parent script

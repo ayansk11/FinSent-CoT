@@ -237,7 +237,7 @@ def patch_llama_cpp_install():
         f"{indent}import shutil as _shutil\n"
         f"{indent}if _shutil.which('llama-quantize'):\n"
         f"{indent}    print('[patch_a100] llama-quantize in PATH — skip install')\n"
-        f"{indent}    return _shutil.which('llama-quantize')\n"
+        f"{indent}    return _shutil.which('llama-quantize'), _shutil.which('convert_hf_to_gguf.py') or ''\n"
     )
 
     new_content = content[:insert_at] + early_return + content[insert_at:]
