@@ -55,7 +55,7 @@ class RewardEarlyStoppingCallback(TrainerCallback):
             "early_stop/best_reward": self.best_reward,
             "early_stop/no_improve_count": self.no_improve_count,
             "early_stop/patience_remaining": self.patience - self.no_improve_count,
-        }, step=step)
+        })
 
         if step < self.warmup_steps:
             return

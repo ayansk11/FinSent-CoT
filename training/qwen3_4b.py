@@ -22,6 +22,24 @@ import time
 from pathlib import Path
 
 
+def _wandb_init_safe(**kwargs):
+    """wandb.init with retry for concurrent SLURM job startup."""
+    import wandb as _wb
+    import time as _t
+    for attempt in range(3):
+        try:
+            return _wb.init(**kwargs)
+        except Exception as e:
+            if attempt < 2:
+                wait = 30 * (attempt + 1)
+                print(f"[wandb] init failed ({e}), retrying in {wait}s...")
+                _t.sleep(wait)
+            else:
+                print(f"[wandb] init failed after 3 attempts, disabling")
+                os.environ["WANDB_MODE"] = "disabled"
+                return _wb.init(**kwargs)
+
+
 # ─── Model Configuration ─────────────────────────────────────────────────────
 
 MODEL_KEY = "qwen3-4b"
@@ -143,7 +161,7 @@ def run_sft():
     print()
 
     # ─── W&B ──────────────────────────────────────────────────────────────
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY],
@@ -316,12 +334,16 @@ def run_grpo():
     from datasets import Dataset
     from unsloth import FastLanguageModel
     from trl import GRPOConfig, GRPOTrainer
-    # Fix pickle identity for Unsloth dynamically-loaded GRPOConfig (checkpoint save)
+    # Fix: Unsloth GRPOConfig serialization identity.
+    # Unsloth dynamically compiles UnslothGRPOConfig in a cache module that
+    # torch.save cannot re-import. Override __module__/__qualname__ so the
+    # serializer resolves through the stable TRL import path.
     for _n, _m in list(sys.modules.items()):
         if _m and hasattr(_m, 'UnslothGRPOConfig'):
-            if 'compiled_cache' in getattr(_m, '__file__', '') or 'compiled_cache' in (_n or ''):
-                sys.modules['UnslothGRPOTrainer'] = _m
-                break
+            _ucfg = getattr(_m, 'UnslothGRPOConfig')
+            _ucfg.__module__ = GRPOConfig.__module__
+            _ucfg.__qualname__ = GRPOConfig.__qualname__
+            break
 
     from rewards import (
         sentiment_correctness_reward,
@@ -350,7 +372,7 @@ def run_grpo():
     print()
 
     # ─── W&B ──────────────────────────────────────────────────────────────
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY],
@@ -521,7 +543,7 @@ def run_export(upload: bool = False):
     print()
 
     # ─── W&B ──────────────────────────────────────────────────────────────
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"export-{SHORT_NAME}",
         tags=["export", "gguf", "quantization", MODEL_KEY],
@@ -543,32 +565,34 @@ def run_export(upload: bool = False):
         load_in_4bit=True,
     )
 
-    # ─── Export GGUF quantizations ────────────────────────────────────────
+    # ─── Save merged HF weights ──────────────────────────────────────────
+    merged_dir = output_dir / "merged_hf"
+    print(f"\nSaving merged HF weights to {merged_dir}...")
+    model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
+
+    # ─── GGUF conversion via pre-built llama.cpp ──────────────────────────
+    import subprocess as _sp
+    _convert = shutil.which("convert_hf_to_gguf.py") or str(Path("llama.cpp/convert_hf_to_gguf.py"))
+    _quantize = shutil.which("llama-quantize") or str(Path("llama.cpp/build/bin/llama-quantize"))
+
+    bf16_gguf = output_dir / f"{model_name}.bf16.gguf"
+    print(f"\n  Converting HF -> GGUF bf16...")
+    _sp.run([sys.executable, _convert, str(merged_dir),
+             "--outfile", str(bf16_gguf), "--outtype", "bf16"], check=True)
+
     exports = []
     for quant in QUANTIZATIONS:
         quant_dir = output_dir / quant
         quant_dir.mkdir(parents=True, exist_ok=True)
         gguf_filename = f"{model_name}.{quant}.gguf"
+        final_path = quant_dir / gguf_filename
 
-        print(f"\n  Exporting {quant}...")
+        print(f"\n  Quantizing {quant}...")
         start = time.time()
-        model.save_pretrained_gguf(
-            str(quant_dir), tokenizer,
-            quantization_method=quant.lower(),
-        )
+        _sp.run([_quantize, str(bf16_gguf), str(final_path), quant], check=True)
         elapsed = time.time() - start
 
-        # Rename GGUF file to standard name
-        final_path = None
-        for f in quant_dir.glob("*.gguf"):
-            if f.name != gguf_filename:
-                dest = quant_dir / gguf_filename
-                shutil.move(str(f), str(dest))
-                final_path = dest
-            else:
-                final_path = f
-
-        size_mb = os.path.getsize(str(final_path)) / (1024 * 1024) if final_path else 0
+        size_mb = os.path.getsize(str(final_path)) / (1024 * 1024) if final_path.exists() else 0
         size_gb = round(size_mb / 1024, 2)
 
         exports.append({
@@ -581,14 +605,10 @@ def run_export(upload: bool = False):
         })
         print(f"    -> {gguf_filename}: {size_gb} GB ({elapsed:.0f}s)")
 
-        # Write Ollama Modelfile
         with open(quant_dir / "Modelfile", "w") as mf:
             mf.write(MODELFILE_TEMPLATE.format(gguf_filename=gguf_filename))
 
-    # ─── Save merged HF weights ──────────────────────────────────────────
-    merged_dir = output_dir / "merged_hf"
-    print(f"\nSaving merged HF weights to {merged_dir}...")
-    model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
+    bf16_gguf.unlink(missing_ok=True)
 
     # MLX export (for vllm-mlx / mlx-lm / mlx-vlm compatibility)
     try:

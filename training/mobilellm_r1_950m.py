@@ -24,6 +24,24 @@ import time
 from pathlib import Path
 
 
+def _wandb_init_safe(**kwargs):
+    """wandb.init with retry for concurrent SLURM job startup."""
+    import wandb as _wb
+    import time as _t
+    for attempt in range(3):
+        try:
+            return _wb.init(**kwargs)
+        except Exception as e:
+            if attempt < 2:
+                wait = 30 * (attempt + 1)
+                print(f"[wandb] init failed ({e}), retrying in {wait}s...")
+                _t.sleep(wait)
+            else:
+                print(f"[wandb] init failed after 3 attempts, disabling")
+                os.environ["WANDB_MODE"] = "disabled"
+                return _wb.init(**kwargs)
+
+
 # ─── Model Configuration ─────────────────────────────────────────────────────
 
 MODEL_KEY = "mobilellm-r1-950m"
@@ -155,6 +173,16 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
             inner.lm_head.weight = inner.embed_tokens.weight
             print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
 
+    # Cast lm_head input to match weight dtype (prevents float32/bf16 mismatch
+    # when prepare_model_for_kbit_training leaves hidden states in float32)
+    if hasattr(inner, 'lm_head'):
+        def _cast_lm_head_input(module, input):
+            x = input[0]
+            if x.dtype != module.weight.dtype:
+                return (x.to(module.weight.dtype),) + input[1:]
+            return input
+        inner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
+
     return model, tokenizer
 
 
@@ -207,6 +235,14 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
             inner.lm_head.weight = inner.embed_tokens.weight
             print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
 
+    if hasattr(inner, 'lm_head'):
+        def _cast_lm_head_input(module, input):
+            x = input[0]
+            if x.dtype != module.weight.dtype:
+                return (x.to(module.weight.dtype),) + input[1:]
+            return input
+        inner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
+
     return model, tokenizer
 
 
@@ -231,7 +267,7 @@ def run_sft():
     print(f"  LR: {SFT_LR}, Epochs: {SFT_EPOCHS}")
     print()
 
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY, "peft"],
@@ -352,7 +388,7 @@ def run_grpo():
     print(f"  LR: {GRPO_LR}, Gens: {GRPO_NUM_GENERATIONS}, Max steps: {GRPO_MAX_STEPS}")
     print()
 
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY, "peft"],
@@ -493,7 +529,7 @@ def run_export(upload=False):
     print(f"  NOTE: GGUF conversion requires manual llama.cpp convert_hf_to_gguf.py")
     print()
 
-    wandb.init(
+    _wandb_init_safe(
         project="FinSent-CoT",
         name=f"export-{SHORT_NAME}",
         tags=["export", "peft-merge", MODEL_KEY],
