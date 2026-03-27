@@ -75,6 +75,6 @@ export PATH="$PWD/llama.cpp/build/bin:$PATH"
 python training/patch_a100.py
 
 # Run full pipeline
-python training/mobilellm_r1_950m.py --phase all
+python training/mobilellm_r1_950m.py --phase all --upload
 
 echo "End: $(date)"

@@ -82,6 +82,6 @@ pip install gguf -q 2>/dev/null || true
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
 
 # Run full pipeline
-python training/qwen3_5_9b.py --phase all
+python training/qwen3_5_9b.py --phase all --upload
 
 echo "End: $(date)"

@@ -82,6 +82,6 @@ pip install gguf -q 2>/dev/null || true
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
 
 # Run full pipeline
-python training/deepseek_r1_1_5b.py --phase all
+python training/deepseek_r1_1_5b.py --phase all --upload
 
 echo "End: $(date)"
