@@ -164,24 +164,35 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
 
     # MobileLLM uses weight tying (embed_tokens == lm_head).
     # prepare_model_for_kbit_training + get_peft_model can break this tie.
-    # Re-tie if needed to prevent NaN loss from uninitialized lm_head weights.
-    inner = model
-    while hasattr(inner, 'model'):
-        inner = inner.model
-    if hasattr(inner, 'lm_head') and hasattr(inner, 'embed_tokens'):
-        if inner.lm_head.weight.data_ptr() != inner.embed_tokens.weight.data_ptr():
-            inner.lm_head.weight = inner.embed_tokens.weight
+    # Find the model level that has lm_head (don't unwrap too deep).
+    _m = model
+    _lm_head_owner = None
+    while _m is not None:
+        if hasattr(_m, 'lm_head'):
+            _lm_head_owner = _m
+            break
+        _m = getattr(_m, 'model', None)
+
+    if _lm_head_owner is not None:
+        if hasattr(_lm_head_owner, 'embed_tokens'):
+            _embed = _lm_head_owner.embed_tokens
+        elif hasattr(getattr(_lm_head_owner, 'model', None), 'embed_tokens'):
+            _embed = _lm_head_owner.model.embed_tokens
+        else:
+            _embed = None
+
+        if _embed is not None and _lm_head_owner.lm_head.weight.data_ptr() != _embed.weight.data_ptr():
+            _lm_head_owner.lm_head.weight = _embed.weight
             print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
 
-    # Cast lm_head input to match weight dtype (prevents float32/bf16 mismatch
-    # when prepare_model_for_kbit_training leaves hidden states in float32)
-    if hasattr(inner, 'lm_head'):
+        # Cast lm_head input to match weight dtype (prevents float32/bf16 mismatch
+        # when prepare_model_for_kbit_training leaves hidden states in float32)
         def _cast_lm_head_input(module, input):
             x = input[0]
             if x.dtype != module.weight.dtype:
                 return (x.to(module.weight.dtype),) + input[1:]
             return input
-        inner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
+        _lm_head_owner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
 
     return model, tokenizer
 
@@ -226,22 +237,33 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     model.print_trainable_parameters()
 
     # MobileLLM uses weight tying (embed_tokens == lm_head).
-    # prepare_model_for_kbit_training + get_peft_model can break this tie.
-    inner = model
-    while hasattr(inner, 'model'):
-        inner = inner.model
-    if hasattr(inner, 'lm_head') and hasattr(inner, 'embed_tokens'):
-        if inner.lm_head.weight.data_ptr() != inner.embed_tokens.weight.data_ptr():
-            inner.lm_head.weight = inner.embed_tokens.weight
+    # Find the model level that has lm_head (don't unwrap too deep).
+    _m = model
+    _lm_head_owner = None
+    while _m is not None:
+        if hasattr(_m, 'lm_head'):
+            _lm_head_owner = _m
+            break
+        _m = getattr(_m, 'model', None)
+
+    if _lm_head_owner is not None:
+        if hasattr(_lm_head_owner, 'embed_tokens'):
+            _embed = _lm_head_owner.embed_tokens
+        elif hasattr(getattr(_lm_head_owner, 'model', None), 'embed_tokens'):
+            _embed = _lm_head_owner.model.embed_tokens
+        else:
+            _embed = None
+
+        if _embed is not None and _lm_head_owner.lm_head.weight.data_ptr() != _embed.weight.data_ptr():
+            _lm_head_owner.lm_head.weight = _embed.weight
             print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
 
-    if hasattr(inner, 'lm_head'):
         def _cast_lm_head_input(module, input):
             x = input[0]
             if x.dtype != module.weight.dtype:
                 return (x.to(module.weight.dtype),) + input[1:]
             return input
-        inner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
+        _lm_head_owner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
 
     return model, tokenizer
 

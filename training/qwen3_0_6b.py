@@ -22,6 +22,14 @@ import time
 from pathlib import Path
 
 
+def _rebuild_grpo_config(d):
+    """Pickle helper: reconstruct GRPOConfig from dict (avoids UnslothGRPOConfig identity issue)."""
+    from trl import GRPOConfig
+    obj = object.__new__(GRPOConfig)
+    obj.__dict__.update(d)
+    return obj
+
+
 def _wandb_init_safe(**kwargs):
     """wandb.init with retry for concurrent SLURM job startup."""
     import wandb as _wb
@@ -286,16 +294,6 @@ def run_grpo():
     from datasets import Dataset
     from unsloth import FastLanguageModel
     from trl import GRPOConfig, GRPOTrainer
-    # Fix: Unsloth GRPOConfig serialization identity.
-    # Unsloth dynamically compiles UnslothGRPOConfig in a cache module that
-    # torch.save cannot re-import. Override __module__/__qualname__ so the
-    # serializer resolves through the stable TRL import path.
-    for _n, _m in list(sys.modules.items()):
-        if _m and hasattr(_m, 'UnslothGRPOConfig'):
-            _ucfg = getattr(_m, 'UnslothGRPOConfig')
-            _ucfg.__module__ = GRPOConfig.__module__
-            _ucfg.__qualname__ = GRPOConfig.__qualname__
-            break
     from rewards import (
         sentiment_correctness_reward, format_compliance_reward,
         reasoning_quality_reward, consistency_reward,
@@ -365,6 +363,13 @@ def run_grpo():
         reward_funcs=[sentiment_correctness_reward, format_compliance_reward, reasoning_quality_reward, consistency_reward],
         callbacks=[early_stop],
     )
+
+    # Fix: Unsloth's dynamic UnslothGRPOConfig can't be serialized by torch.save
+    # during checkpoint. Add custom reducer so it serializes as a plain dict
+    # and reconstructs as a standard TRL GRPOConfig on load.
+    _cfg_cls = type(trainer.args)
+    if 'Unsloth' in _cfg_cls.__name__:
+        _cfg_cls.__reduce_ex__ = lambda self, protocol: (_rebuild_grpo_config, (self.__dict__.copy(),))
 
     start = time.time()
     trainer.train()
@@ -438,7 +443,8 @@ def run_export(upload: bool = False):
 
         print(f"\n  Quantizing {quant}...")
         start = time.time()
-        _sp.run([_quantize, str(bf16_gguf), str(final_path), quant], check=True)
+        _sp.run([_quantize, str(bf16_gguf), str(final_path), quant],
+                check=True, env={**os.environ, "CUDA_VISIBLE_DEVICES": ""})
         elapsed = time.time() - start
 
         size_gb = round(os.path.getsize(str(final_path)) / (1024**3), 2) if final_path.exists() else 0

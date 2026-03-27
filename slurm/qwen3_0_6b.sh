@@ -72,12 +72,15 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     echo "Building llama.cpp (cmake)..."
     (
         cd llama.cpp
-        cmake -B build -DGGML_CUDA=ON 2>&1 | tail -5
+        cmake -B build 2>&1 | tail -5
         cmake --build build --target llama-quantize -j16 2>&1 | tail -5
     )
 fi
 
-# Ensure Unsloth can find pre-built llama.cpp for GGUF export
+# Install gguf module (needed by convert_hf_to_gguf.py)
+pip install gguf -q 2>/dev/null || true
+
+# Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
 
 # Run full pipeline
