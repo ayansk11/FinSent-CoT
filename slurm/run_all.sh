@@ -6,7 +6,8 @@
 #   bash slurm/run_all.sh --small      # Submit only small models (0.6B, 1.5B, 950M)
 #   bash slurm/run_all.sh --large      # Submit only large models (1.7B, 4B, 8B)
 #   bash slurm/run_all.sh --qwen3.5    # Submit all 4 Qwen3.5 models
-#   bash slurm/run_all.sh --all        # Submit all 10 models
+#   bash slurm/run_all.sh --gemma4     # Submit all 3 Gemma 4 models
+#   bash slurm/run_all.sh --all        # Submit all 13 models
 
 set -euo pipefail
 
@@ -50,6 +51,14 @@ if [ "$MODE" = "--qwen3.5" ] || [ "$MODE" = "--all" ]; then
     submit slurm/qwen3_5_2b.sh   "Qwen3.5-2B   (14h)"
     submit slurm/qwen3_5_4b.sh   "Qwen3.5-4B   (16h)"
     submit slurm/qwen3_5_9b.sh   "Qwen3.5-9B   (20h)"
+    echo ""
+fi
+
+if [ "$MODE" = "--gemma4" ] || [ "$MODE" = "--all" ]; then
+    echo "Gemma 4 models:"
+    submit slurm/gemma4_e2b.sh      "Gemma4-E2B     (12h, A100)"
+    submit slurm/gemma4_e4b.sh      "Gemma4-E4B     (14h, A100)"
+    submit slurm/gemma4_26b_a4b.sh  "Gemma4-26B-A4B (20h, H100)"
     echo ""
 fi
 

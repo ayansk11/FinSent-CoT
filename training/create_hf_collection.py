@@ -34,12 +34,16 @@ MODELS = [
     {"key": "deepseek-r1-1.5b","name": "DeepSeek-R1-1.5B", "family": "DeepSeek", "full": "Ayansk11/FinSenti-DeepSeek-R1-1.5B",   "gguf": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-GGUF"},
     # ── MobileLLM family ────────────────────────────────────────────────
     {"key": "mobilellm-r1-950m","name": "MobileLLM-R1-950M","family": "MobileLLM","full": "Ayansk11/FinSenti-MobileLLM-R1-950M",  "gguf": None},
+    # ── Gemma 4 family ──────────────────────────────────────────────────
+    {"key": "gemma4-e2b",      "name": "Gemma4-E2B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E2B",         "gguf": "Ayansk11/FinSenti-Gemma4-E2B-GGUF"},
+    {"key": "gemma4-e4b",      "name": "Gemma4-E4B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E4B",         "gguf": "Ayansk11/FinSenti-Gemma4-E4B-GGUF"},
+    {"key": "gemma4-26b-a4b",  "name": "Gemma4-26B-A4B",   "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-26B-A4B",     "gguf": "Ayansk11/FinSenti-Gemma4-26B-A4B-GGUF"},
 ]
 
 COLLECTION_TITLE = "FinSenti"
 COLLECTION_DESCRIPTION = (
     "Financial sentiment analysis with chain-of-thought reasoning. "
-    "10 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM) fine-tuned "
+    "13 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM, Gemma 4) fine-tuned "
     "with SFT + GRPO on 50.8K balanced samples. "
     "Each model available as full-precision SafeTensors and GGUF "
     "(Q4_K_M, Q5_K_M, Q8_0) for Ollama/llama.cpp on consumer hardware."
