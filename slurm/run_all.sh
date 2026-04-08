@@ -58,7 +58,7 @@ if [ "$MODE" = "--gemma4" ] || [ "$MODE" = "--all" ]; then
     echo "Gemma 4 models:"
     submit slurm/gemma4_e2b.sh      "Gemma4-E2B     (12h, A100)"
     submit slurm/gemma4_e4b.sh      "Gemma4-E4B     (14h, A100)"
-    submit slurm/gemma4_26b_a4b.sh  "Gemma4-26B-A4B (20h, H100)"
+    echo "  Gemma4-26B-A4B -> SKIP (submit from Quartz: sbatch slurm/gemma4_26b_a4b.sh)"
     echo ""
 fi
 
