@@ -80,11 +80,7 @@ GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-Qwen3-4B"
-HF_REPOS = {
-    "Q4_K_M": "Ayansk11/FinSenti-Qwen3-4B-Q4_K_M",
-    "Q5_K_M": "Ayansk11/FinSenti-Qwen3-4B-Q5_K_M",
-    "Q8_0":   "Ayansk11/FinSenti-Qwen3-4B-Q8_0",
-}
+HF_GGUF = "Ayansk11/FinSenti-Qwen3-4B-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
     4: "Ayansk11/FinSenti-Qwen3-4B-MLX-4bit",
@@ -553,7 +549,7 @@ def run_export(upload: bool = False):
             "model_key": MODEL_KEY,
             "grpo_checkpoint": GRPO_OUTPUT,
             "quantizations": QUANTIZATIONS,
-            "hf_repos": HF_REPOS,
+            "hf_gguf": HF_GGUF,
         },
     )
 
@@ -648,26 +644,13 @@ def run_export(upload: bool = False):
         print(f"\nUploading to HuggingFace...")
 
         # Upload GGUF repos (each quant to its own repo)
+        api.create_repo(repo_id=HF_GGUF, repo_type="model", exist_ok=True)
         for e in exports:
-            repo = HF_REPOS[e["quant"]]
-            api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
-
-            gguf_path = os.path.join(e["dir"], e["filename"])
-            api.upload_file(
-                path_or_fileobj=gguf_path,
-                path_in_repo=e["filename"],
-                repo_id=repo,
-                repo_type="model",
-            )
-
-            modelfile_path = os.path.join(e["dir"], "Modelfile")
-            api.upload_file(
-                path_or_fileobj=modelfile_path,
-                path_in_repo="Modelfile",
-                repo_id=repo,
-                repo_type="model",
-            )
-            print(f"  Uploaded {e['quant']} -> {repo}")
+            api.upload_file(path_or_fileobj=os.path.join(e["dir"], e["filename"]), path_in_repo=e["filename"], repo_id=HF_GGUF, repo_type="model")
+            mf = os.path.join(e["dir"], "Modelfile")
+            if os.path.exists(mf):
+                api.upload_file(path_or_fileobj=mf, path_in_repo=f"Modelfile.{e['quant']}", repo_id=HF_GGUF, repo_type="model")
+            print(f"  Uploaded {e['quant']} -> {HF_GGUF}")
 
         # Upload full-precision HF weights
         api.create_repo(repo_id=HF_FULL, repo_type="model", exist_ok=True)

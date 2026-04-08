@@ -74,11 +74,7 @@ GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-MobileLLM-R1-950M"
-HF_REPOS = {
-    "Q4_K_M": "Ayansk11/FinSenti-MobileLLM-R1-950M-Q4_K_M",
-    "Q5_K_M": "Ayansk11/FinSenti-MobileLLM-R1-950M-Q5_K_M",
-    "Q8_0":   "Ayansk11/FinSenti-MobileLLM-R1-950M-Q8_0",
-}
+HF_GGUF = "Ayansk11/FinSenti-MobileLLM-R1-950M-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
     4: "Ayansk11/FinSenti-MobileLLM-R1-950M-MLX-4bit",
@@ -624,10 +620,9 @@ def run_export(upload=False):
         )
         print(f"  Uploaded HF weights -> {HF_FULL}")
 
-        # Create GGUF repos (empty, awaiting manual conversion upload)
-        for quant, repo in HF_REPOS.items():
-            api.create_repo(repo_id=repo, repo_type="model", exist_ok=True)
-            print(f"  Created repo {repo} (upload GGUF after manual conversion)")
+        # Create GGUF repo (awaiting manual conversion upload)
+        api.create_repo(repo_id=HF_GGUF, repo_type="model", exist_ok=True)
+        print(f"  Created repo {HF_GGUF} (upload GGUF after manual conversion)")
         # Upload MLX models
         for q_bits, repo in MLX_REPOS.items():
             mlx_dir = output_dir / f"mlx-{q_bits}bit"
@@ -646,9 +641,7 @@ def run_export(upload=False):
     print(f"\n  Convert to GGUF with llama.cpp:")
     for quant in QUANTIZATIONS:
         print(f"    python convert_hf_to_gguf.py {merged_dir} --outtype {quant.lower()}")
-    print(f"\n  Then upload each to:")
-    for quant, repo in HF_REPOS.items():
-        print(f"    {quant}: {repo}")
+    print(f"\n  Then upload all quants to: {HF_GGUF}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
