@@ -37,6 +37,8 @@ export NUMBA_CACHE_DIR=/N/scratch/ayshaikh/.cache/numba
 mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
          "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
+# Quartz: purge Cray environment (avoids libxpmem.so.0 errors)
+module purge 2>/dev/null || true
 module load python/gpu/3.12.5
 module load cudatoolkit/12.6
 
