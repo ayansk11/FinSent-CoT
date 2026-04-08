@@ -13,7 +13,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSent-CoT — MobileLLM-R1-950M full pipeline (SFT -> GRPO -> Export)
+# FinSenti — MobileLLM-R1-950M full pipeline (SFT -> GRPO -> Export)
 # Uses PEFT + bitsandbytes (no Unsloth)
 
 set -euo pipefail
@@ -46,7 +46,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSent-CoT
+export WANDB_PROJECT=FinSenti
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 

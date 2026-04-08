@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit FinSent-CoT training jobs (SFT -> GRPO -> Export per model)
+# Submit FinSenti training jobs (SFT -> GRPO -> Export per model)
 #
 # Usage:
 #   bash slurm/run_all.sh              # Submit all 6 original models
@@ -14,7 +14,7 @@ cd /N/scratch/ayshaikh/FinSent-CoT
 mkdir -p logs
 
 echo "============================================"
-echo "FinSent-CoT — Submitting Training Jobs"
+echo "FinSenti — Submitting Training Jobs"
 echo "============================================"
 echo ""
 

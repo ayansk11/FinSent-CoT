@@ -13,7 +13,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSent-CoT — Qwen3.5-0.8B full pipeline (SFT -> GRPO -> Export)
+# FinSenti — Qwen3.5-0.8B full pipeline (SFT -> GRPO -> Export)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
@@ -45,7 +45,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSent-CoT
+export WANDB_PROJECT=FinSenti
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 

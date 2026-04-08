@@ -1,5 +1,5 @@
 """
-Create/update the FinSent-CoT HuggingFace Collection.
+Create/update the FinSenti HuggingFace Collection.
 
 Groups all 41 repos (1 dataset + 10 full-precision + 30 GGUF) into a single
 collection for easy discovery.
@@ -16,7 +16,7 @@ from huggingface_hub import HfApi
 
 # ─── All repos in the collection ─────────────────────────────────────────────
 
-DATASET_REPO = "Ayansk11/FinSent-CoT-Dataset"
+DATASET_REPO = "Ayansk11/FinSenti-Dataset"
 
 # Models ordered by family, then ascending parameter count.
 # This order is used directly in the HF collection for easy navigation.
@@ -26,44 +26,44 @@ MODELS = [
         "key": "qwen3-0.6b",
         "name": "Qwen3-0.6B",
         "family": "Qwen3",
-        "full": "Ayansk11/FinSent-CoT-Qwen3-0.6B",
+        "full": "Ayansk11/FinSenti-Qwen3-0.6B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3-0.6B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3-0.6B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3-0.6B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3-0.6B-Q8_0",
         },
     },
     {
         "key": "qwen3-1.7b",
         "name": "Qwen3-1.7B",
         "family": "Qwen3",
-        "full": "Ayansk11/FinSent-CoT-Qwen3-1.7B",
+        "full": "Ayansk11/FinSenti-Qwen3-1.7B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3-1.7B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3-1.7B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3-1.7B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3-1.7B-Q8_0",
         },
     },
     {
         "key": "qwen3-4b",
         "name": "Qwen3-4B",
         "family": "Qwen3",
-        "full": "Ayansk11/FinSent-CoT-Qwen3-4B",
+        "full": "Ayansk11/FinSenti-Qwen3-4B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-4B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-4B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3-4B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3-4B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3-4B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3-4B-Q8_0",
         },
     },
     {
         "key": "qwen3-8b",
         "name": "Qwen3-8B",
         "family": "Qwen3",
-        "full": "Ayansk11/FinSent-CoT-Qwen3-8B",
+        "full": "Ayansk11/FinSenti-Qwen3-8B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3-8B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3-8B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3-8B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3-8B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3-8B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3-8B-Q8_0",
         },
     },
     # ── Qwen3.5 family (newest, ascending) ───────────────────────────────
@@ -71,44 +71,44 @@ MODELS = [
         "key": "qwen3.5-0.8b",
         "name": "Qwen3.5-0.8B",
         "family": "Qwen3.5",
-        "full": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B",
+        "full": "Ayansk11/FinSenti-Qwen3.5-0.8B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-0.8B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3.5-0.8B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3.5-0.8B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3.5-0.8B-Q8_0",
         },
     },
     {
         "key": "qwen3.5-2b",
         "name": "Qwen3.5-2B",
         "family": "Qwen3.5",
-        "full": "Ayansk11/FinSent-CoT-Qwen3.5-2B",
+        "full": "Ayansk11/FinSenti-Qwen3.5-2B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-2B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3.5-2B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3.5-2B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3.5-2B-Q8_0",
         },
     },
     {
         "key": "qwen3.5-4b",
         "name": "Qwen3.5-4B",
         "family": "Qwen3.5",
-        "full": "Ayansk11/FinSent-CoT-Qwen3.5-4B",
+        "full": "Ayansk11/FinSenti-Qwen3.5-4B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-4B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3.5-4B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3.5-4B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3.5-4B-Q8_0",
         },
     },
     {
         "key": "qwen3.5-9b",
         "name": "Qwen3.5-9B",
         "family": "Qwen3.5",
-        "full": "Ayansk11/FinSent-CoT-Qwen3.5-9B",
+        "full": "Ayansk11/FinSenti-Qwen3.5-9B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-Qwen3.5-9B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-Qwen3.5-9B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-Qwen3.5-9B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-Qwen3.5-9B-Q8_0",
         },
     },
     # ── DeepSeek family ──────────────────────────────────────────────────
@@ -116,11 +116,11 @@ MODELS = [
         "key": "deepseek-r1-1.5b",
         "name": "DeepSeek-R1-1.5B",
         "family": "DeepSeek",
-        "full": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B",
+        "full": "Ayansk11/FinSenti-DeepSeek-R1-1.5B",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-DeepSeek-R1-1.5B-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-DeepSeek-R1-1.5B-Q8_0",
         },
     },
     # ── MobileLLM family ─────────────────────────────────────────────────
@@ -128,16 +128,16 @@ MODELS = [
         "key": "mobilellm-r1-950m",
         "name": "MobileLLM-R1-950M",
         "family": "MobileLLM",
-        "full": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M",
+        "full": "Ayansk11/FinSenti-MobileLLM-R1-950M",
         "gguf": {
-            "Q4_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q4_K_M",
-            "Q5_K_M": "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q5_K_M",
-            "Q8_0":   "Ayansk11/FinSent-CoT-MobileLLM-R1-950M-Q8_0",
+            "Q4_K_M": "Ayansk11/FinSenti-MobileLLM-R1-950M-Q4_K_M",
+            "Q5_K_M": "Ayansk11/FinSenti-MobileLLM-R1-950M-Q5_K_M",
+            "Q8_0":   "Ayansk11/FinSenti-MobileLLM-R1-950M-Q8_0",
         },
     },
 ]
 
-COLLECTION_TITLE = "FinSent-CoT"
+COLLECTION_TITLE = "FinSenti"
 COLLECTION_DESCRIPTION = (
     "Financial sentiment analysis with chain-of-thought reasoning. "
     "10 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM) fine-tuned "
@@ -149,7 +149,7 @@ COLLECTION_DESCRIPTION = (
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create FinSent-CoT HuggingFace collection")
+    parser = argparse.ArgumentParser(description="Create FinSenti HuggingFace collection")
     parser.add_argument("--dry-run", action="store_true", help="Preview repos without creating")
     parser.add_argument("--namespace", default="Ayansk11", help="HF namespace")
     args = parser.parse_args()
@@ -182,7 +182,7 @@ def main():
                 items.append({"repo_id": m["gguf"][quant], "type": "model",
                               "note": f"📦 {m['name']} GGUF {quant} — {quant_labels[quant]}"})
 
-    print(f"FinSent-CoT Collection")
+    print(f"FinSenti Collection")
     print(f"  Total items: {len(items)} (1 dataset + {len(MODELS)} full-precision + {len(MODELS) * 3} GGUF)")
     print()
 
