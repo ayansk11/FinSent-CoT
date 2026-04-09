@@ -249,8 +249,12 @@ def _patch_masked_batch_mean():
         print("  [Patch] Unsloth GRPOTrainer cache not found — skipping")
         return None
     filepath = cache_mod.__file__
-    with open(filepath, 'r') as f:
-        content = f.read()
+    try:
+        with open(filepath, 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f'  [Patch] Cache file deleted by another job — skipping: {filepath}')
+        return None
     count = content.count(OLD)
     if count == 0:
         print(f"  [Patch] {filepath} — already patched")
