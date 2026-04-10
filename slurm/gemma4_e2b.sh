@@ -77,7 +77,8 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install gguf module (needed by convert_hf_to_gguf.py)
+# Upgrade transformers for Gemma 4 support + install gguf
+pip install --upgrade transformers -q 2>/dev/null || true
 pip install gguf -q 2>/dev/null || true
 
 # Ensure llama.cpp tools are in PATH for GGUF export

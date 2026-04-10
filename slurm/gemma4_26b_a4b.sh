@@ -37,10 +37,13 @@ export NUMBA_CACHE_DIR=/N/scratch/ayshaikh/.cache/numba
 mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
          "$CUDA_CACHE_PATH" "$TRITON_CACHE_DIR" "$NUMBA_CACHE_DIR"
 
-# Quartz: purge Cray environment (avoids libxpmem.so.0 errors)
+# Quartz: clean environment (avoids libxpmem.so.0 from Cray modules)
 module purge 2>/dev/null || true
 module load python/gpu/3.12.5
 module load cudatoolkit/12.6
+
+# Ensure LD_LIBRARY_PATH doesn't reference missing Cray libs
+export LD_LIBRARY_PATH=$(echo "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v xpmem | tr '\n' ':')
 
 cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
@@ -80,7 +83,8 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install gguf module (needed by convert_hf_to_gguf.py)
+# Upgrade transformers for Gemma 4 support + install gguf
+pip install --upgrade transformers -q 2>/dev/null || true
 pip install gguf -q 2>/dev/null || true
 
 # Ensure llama.cpp tools are in PATH for GGUF export
