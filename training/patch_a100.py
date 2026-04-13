@@ -198,7 +198,8 @@ def main():
     results.append(("install_llama_cpp", patch_llama_cpp_install()))
 
     # install_llama_cpp is optional — SLURM scripts build llama.cpp separately
-    optional = {"install_llama_cpp"}
+    # All patches are optional — Unsloth patches fail harmlessly for MobileLLM (PEFT+BnB)
+    optional = {"install_llama_cpp", "fast_lora_backward", "matmul_lora", "compute_3d_position_ids"}
 
     print("-" * 50)
     for name, ok in results:
