@@ -299,13 +299,23 @@ def run_sft():
 
     model, tokenizer = _load_base_model_peft(BASE_MODEL, SFT_LORA_R, SFT_LORA_ALPHA)
 
-    # Load dataset — MobileLLM may not have apply_chat_template, use fallback
+    # Load dataset
     data_path = Path(DATASET_DIR) / "sft_train.jsonl"
     samples = []
     with open(data_path) as f:
         for line in f:
             if line.strip():
                 samples.append(json.loads(line))
+
+    # Test if apply_chat_template works for this tokenizer
+    _test_msgs = [{"role": "user", "content": "test"}]
+    _has_chat_template = False
+    try:
+        _test = tokenizer.apply_chat_template(_test_msgs, tokenize=False)
+        _has_chat_template = bool(_test and len(_test) > 10)
+        print(f"  Chat template: {'available' if _has_chat_template else 'NOT available'}")
+    except Exception as e:
+        print(f"  Chat template: NOT available ({e})")
 
     formatted = []
     for s in samples:
@@ -314,20 +324,23 @@ def run_sft():
             {"role": "user", "content": s["input"]},
             {"role": "assistant", "content": s["output"]},
         ]
-        try:
+        if _has_chat_template:
             text = tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False
             )
-        except Exception:
+        else:
+            # Llama 4 format fallback (MobileLLM uses llama4_text architecture)
             text = (
-                f"### System:\n{SYSTEM_PROMPT}\n\n"
-                f"### User:\n{s['input']}\n\n"
-                f"### Assistant:\n{s['output']}"
+                f"<|header_start|>system<|header_end|>\n\n{SYSTEM_PROMPT}<|eot|>"
+                f"<|header_start|>user<|header_end|>\n\n{s['input']}<|eot|>"
+                f"<|header_start|>assistant<|header_end|>\n\n{s['output']}<|eot|>"
             )
         formatted.append({"text": text})
 
     dataset = Dataset.from_list(formatted)
     print(f"Loaded {len(dataset)} SFT samples")
+    # Debug: show first formatted sample to verify template
+    print(f"  Sample 0 (first 300 chars): {formatted[0]['text'][:300]}")
 
     # TRL >=0.24: tokenizer renamed to processing_class
     import inspect
