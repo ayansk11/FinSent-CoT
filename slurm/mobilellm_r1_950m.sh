@@ -65,8 +65,8 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install gguf module (needed by convert_hf_to_gguf.py)
-pip install gguf -q 2>/dev/null || true
+# Install required modules (wandb missing after earlier venv revert; gguf for convert_hf_to_gguf.py)
+pip install wandb gguf -q 2>/dev/null || true
 
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
