@@ -65,12 +65,12 @@ echo "Venv: $(which python)"
 echo ""
 
 # ─── Upgrade pip first ───────────────────────────────────────────────────
-pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel
 
 # ─── Install PyTorch (CUDA 12.6 compatible — cu124 wheels work with 12.6)
 echo ""
 echo "=== Installing PyTorch ==="
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Verify CUDA
 python -c "
@@ -89,7 +89,7 @@ else:
 # ─── Install training dependencies ───────────────────────────────────────
 echo ""
 echo "=== Installing training dependencies ==="
-pip install \
+python -m pip install \
     transformers \
     datasets \
     accelerate \
@@ -104,7 +104,7 @@ pip install \
 # ─── Install Unsloth (AFTER torch + deps are stable) ────────────────────
 echo ""
 echo "=== Installing Unsloth ==="
-pip install "unsloth[cu124-torch260] @ git+https://github.com/unslothai/unsloth.git"
+python -m pip install "unsloth[cu124-torch260] @ git+https://github.com/unslothai/unsloth.git"
 
 # ─── Verify ALL dependencies ─────────────────────────────────────────────
 echo ""
