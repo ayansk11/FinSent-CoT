@@ -65,8 +65,8 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install required modules (wandb missing after earlier venv revert; gguf for convert_hf_to_gguf.py)
-python -m pip install wandb gguf -q 2>/dev/null || true
+# Install/repair all MobileLLM deps (venv was corrupted by earlier transformers upgrade+revert)
+python -m pip install wandb datasets peft bitsandbytes trl accelerate gguf transformers==5.2.0 -q 2>&1 | tail -3 || true
 
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
