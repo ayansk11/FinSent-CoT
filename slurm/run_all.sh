@@ -7,7 +7,8 @@
 #   bash slurm/run_all.sh --large      # Submit only large models (1.7B, 4B, 8B)
 #   bash slurm/run_all.sh --qwen3.5    # Submit all 4 Qwen3.5 models
 #   bash slurm/run_all.sh --gemma4     # Submit all 3 Gemma 4 models
-#   bash slurm/run_all.sh --all        # Submit all 13 models
+#   bash slurm/run_all.sh --extra      # Submit Tiny-LLM, Llama-3.2-1B, SmolLM-1.7B
+#   bash slurm/run_all.sh --all        # Submit all 16 models
 
 set -euo pipefail
 
@@ -59,6 +60,14 @@ if [ "$MODE" = "--gemma4" ] || [ "$MODE" = "--all" ]; then
     submit slurm/gemma4_e2b.sh      "Gemma4-E2B     (12h, A100)"
     submit slurm/gemma4_e4b.sh      "Gemma4-E4B     (14h, A100)"
     echo "  Gemma4-26B-A4B -> SKIP (submit from Quartz: sbatch slurm/gemma4_26b_a4b.sh)"
+    echo ""
+fi
+
+if [ "$MODE" = "--extra" ] || [ "$MODE" = "--all" ]; then
+    echo "Extra models (Llama 3.2, SmolLM, Tiny-LLM):"
+    submit slurm/tiny_llm_10m.sh    "Tiny-LLM-10M   (8h, PEFT — scaling lower bound)"
+    submit slurm/llama_3_2_1b.sh    "Llama-3.2-1B   (12h)"
+    submit slurm/smollm_1_7b.sh     "SmolLM-1.7B    (14h)"
     echo ""
 fi
 

@@ -38,15 +38,22 @@ MODELS = [
     {"key": "gemma4-e2b",      "name": "Gemma4-E2B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E2B",         "gguf": "Ayansk11/FinSenti-Gemma4-E2B-GGUF"},
     {"key": "gemma4-e4b",      "name": "Gemma4-E4B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E4B",         "gguf": "Ayansk11/FinSenti-Gemma4-E4B-GGUF"},
     {"key": "gemma4-26b-a4b",  "name": "Gemma4-26B-A4B",   "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-26B-A4B",     "gguf": "Ayansk11/FinSenti-Gemma4-26B-A4B-GGUF"},
+    # ── Tiny-LLM family (scaling lower bound) ───────────────────────────
+    {"key": "tiny-llm-10m",    "name": "Tiny-LLM-10M",     "family": "TinyLLM",  "full": "Ayansk11/FinSenti-Tiny-LLM-10M",       "gguf": "Ayansk11/FinSenti-Tiny-LLM-10M-GGUF"},
+    # ── Llama 3.2 family ────────────────────────────────────────────────
+    {"key": "llama-3.2-1b",    "name": "Llama-3.2-1B",     "family": "Llama3",   "full": "Ayansk11/FinSenti-Llama-3.2-1B",       "gguf": "Ayansk11/FinSenti-Llama-3.2-1B-GGUF"},
+    # ── SmolLM family ───────────────────────────────────────────────────
+    {"key": "smollm-1.7b",     "name": "SmolLM-1.7B",      "family": "SmolLM",   "full": "Ayansk11/FinSenti-SmolLM-1.7B",        "gguf": "Ayansk11/FinSenti-SmolLM-1.7B-GGUF"},
 ]
 
 COLLECTION_TITLE = "FinSenti"
 COLLECTION_DESCRIPTION = (
     "Financial sentiment analysis with chain-of-thought reasoning. "
-    "13 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM, Gemma 4) fine-tuned "
-    "with SFT + GRPO on 50.8K balanced samples. "
-    "Each model available as full-precision SafeTensors and GGUF "
-    "(Q4_K_M, Q5_K_M, Q8_0) for Ollama/llama.cpp on consumer hardware."
+    "16 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM, Gemma 4, "
+    "Tiny-LLM, Llama 3.2, SmolLM) fine-tuned with SFT + GRPO on 16.9K "
+    "balanced samples. Scaling study spanning 8 architectures from 10M "
+    "to 9B parameters. Each model available as full-precision SafeTensors "
+    "and GGUF (Q4_K_M, Q5_K_M, Q8_0) for Ollama/llama.cpp on consumer hardware."
 )
 
 
