@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=finsent-mobilellm
+#SBATCH --job-name=finsent-tiny-llm
 #SBATCH --account=r01510
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
