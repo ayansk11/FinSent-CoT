@@ -55,16 +55,18 @@ TARGET_MODULES = [
 ]
 
 # SFT hyperparameters
-SFT_BATCH_SIZE = 8
-SFT_GRAD_ACCUM = 4
+# Batch reduced from 8 to 2: MobileLLM has 128k vocab → logits tensor (batch × seq × vocab)
+# hits 16GB at batch=8. Keeps effective batch=32 via increased grad_accum.
+SFT_BATCH_SIZE = 2
+SFT_GRAD_ACCUM = 16
 SFT_LR = 2e-4
 SFT_LORA_R = 16
 SFT_LORA_ALPHA = 32
 SFT_EPOCHS = 3
 
 # GRPO hyperparameters
-GRPO_BATCH_SIZE = 4
-GRPO_GRAD_ACCUM = 2
+GRPO_BATCH_SIZE = 2
+GRPO_GRAD_ACCUM = 4
 GRPO_LR = 5e-5
 GRPO_LORA_R = 16
 GRPO_LORA_ALPHA = 32
