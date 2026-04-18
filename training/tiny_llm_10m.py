@@ -56,10 +56,11 @@ TARGET_MODULES = [
 ]
 
 # SFT hyperparameters
-# Batch reduced from 8 to 2: MobileLLM has 128k vocab → logits tensor (batch × seq × vocab)
-# hits 16GB at batch=8. Keeps effective batch=32 via increased grad_accum.
-SFT_BATCH_SIZE = 32
-SFT_GRAD_ACCUM = 1
+# Tiny-LLM uses Llama's 128k vocabulary even though model is only 13M params.
+# Logits tensor (batch × seq=1024 × vocab=128k × 4 bytes) OOMs at batch=32.
+# Reduce to batch=2, grad_accum=16 (effective batch=32).
+SFT_BATCH_SIZE = 2
+SFT_GRAD_ACCUM = 16
 SFT_LR = 2e-4
 SFT_LORA_R = 32
 SFT_LORA_ALPHA = 64
