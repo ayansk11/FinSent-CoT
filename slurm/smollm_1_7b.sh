@@ -52,6 +52,9 @@ mkdir -p "$WANDB_DIR"
 # Clear stale Unsloth compiled cache (may be from different TRL version)
 rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 
+# Install/repair unsloth + gguf BEFORE any patches that import unsloth
+python -m pip install unsloth gguf -q 2>&1 | tail -3 || true
+
 # A100 compatibility patches — must run BEFORE patch_unsloth_cache (which
 # imports unsloth). If fast_lora.py is corrupted, this repairs it first.
 python training/patch_a100.py
@@ -74,9 +77,6 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
         cmake --build build --target llama-quantize -j16 2>&1 | tail -5
     )
 fi
-
-# Install/repair unsloth + gguf (venv was corrupted by earlier transformers revert)
-python -m pip install unsloth gguf -q 2>&1 | tail -3 || true
 
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"

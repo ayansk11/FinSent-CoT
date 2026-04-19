@@ -24,7 +24,8 @@ import time
 from pathlib import Path
 
 # Ensure rewards.py and callbacks.py (in same dir) are importable from any cwd
-sys.path.insert(0, str(Path(__file__).parent))
+# Must use .resolve() for absolute path — trainer.train() changes cwd
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def _wandb_init_safe(**kwargs):
