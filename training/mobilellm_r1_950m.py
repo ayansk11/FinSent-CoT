@@ -23,6 +23,9 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure rewards.py and callbacks.py (in same dir) are importable from any cwd
+sys.path.insert(0, str(Path(__file__).parent))
+
 
 def _wandb_init_safe(**kwargs):
     """wandb.init with retry for concurrent SLURM job startup."""
@@ -123,31 +126,72 @@ PARAMETER num_predict 512
 
 # ─── Shared: PEFT model loading ──────────────────────────────────────────────
 
-def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
-    """Load base model with PEFT + bitsandbytes QLoRA."""
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
+def _setup_pad_token(tokenizer, model):
+    """Add a dedicated pad token if pad collides with eos (causes label masking issues)."""
+    needs_new_pad = (
+        tokenizer.pad_token is None
+        or (tokenizer.eos_token_id is not None and tokenizer.pad_token_id == tokenizer.eos_token_id)
     )
+    if needs_new_pad:
+        tokenizer.add_special_tokens({"pad_token": "<|finsenti_pad|>"})
+        if model is not None:
+            model.resize_token_embeddings(len(tokenizer))
+        print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
+    else:
+        print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
+
+
+def _untie_lm_head(model):
+    """Untie lm_head from embed_tokens so they can be trained independently.
+    Required: weight tying with PEFT/quantization causes NaN gradients."""
+    import torch.nn as nn
+    inner = model
+    lm_head_owner = None
+    while inner is not None:
+        if hasattr(inner, 'lm_head'):
+            lm_head_owner = inner
+            break
+        inner = getattr(inner, 'model', None)
+    if lm_head_owner is None:
+        print("  [Warn] Could not find lm_head — skipping untie")
+        return
+    embed = getattr(lm_head_owner, 'embed_tokens', None) \
+        or getattr(getattr(lm_head_owner, 'model', None), 'embed_tokens', None)
+    if embed is None:
+        print("  [Warn] Could not find embed_tokens — skipping untie")
+        return
+    if lm_head_owner.lm_head.weight.data_ptr() == embed.weight.data_ptr():
+        new_weight = nn.Parameter(embed.weight.detach().clone())
+        lm_head_owner.lm_head.weight = new_weight
+        print("  [Fix] Untied lm_head.weight from embed_tokens.weight (independent params)")
+    else:
+        print("  [Info] lm_head and embed_tokens already untied")
+
+
+def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
+    """Load MobileLLM in full bf16 (no quantization) + PEFT LoRA.
+
+    Why no quantization: 4-bit BnB + weight tying caused NaN gradients during SFT.
+    Model is only 950M params (~1.9 GB in bf16) so quantization is not needed.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
-        quantization_config=bnb_config,
         device_map={"": 0},
         trust_remote_code=True,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
     )
-    model = prepare_model_for_kbit_training(model)
+
+    # Add dedicated pad token before any training (resizes embeddings)
+    _setup_pad_token(tokenizer, model)
+
+    # Untie lm_head BEFORE adding LoRA so the new params are trainable
+    _untie_lm_head(model)
 
     lora_config = LoraConfig(
         r=lora_r,
@@ -159,69 +203,36 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
-
-    # MobileLLM uses weight tying (embed_tokens == lm_head).
-    # prepare_model_for_kbit_training + get_peft_model can break this tie.
-    # Find the model level that has lm_head (don't unwrap too deep).
-    _m = model
-    _lm_head_owner = None
-    while _m is not None:
-        if hasattr(_m, 'lm_head'):
-            _lm_head_owner = _m
-            break
-        _m = getattr(_m, 'model', None)
-
-    if _lm_head_owner is not None:
-        if hasattr(_lm_head_owner, 'embed_tokens'):
-            _embed = _lm_head_owner.embed_tokens
-        elif hasattr(getattr(_lm_head_owner, 'model', None), 'embed_tokens'):
-            _embed = _lm_head_owner.model.embed_tokens
-        else:
-            _embed = None
-
-        if _embed is not None and _lm_head_owner.lm_head.weight.data_ptr() != _embed.weight.data_ptr():
-            _lm_head_owner.lm_head.weight = _embed.weight
-            print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
-
-        # Cast lm_head input to match weight dtype (prevents float32/bf16 mismatch
-        # when prepare_model_for_kbit_training leaves hidden states in float32)
-        def _cast_lm_head_input(module, input):
-            x = input[0]
-            if x.dtype != module.weight.dtype:
-                return (x.to(module.weight.dtype),) + input[1:]
-            return input
-        _lm_head_owner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
 
     return model, tokenizer
 
 
 def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
-    """Load PEFT checkpoint, merge SFT adapters, add fresh GRPO LoRA."""
-    import torch
-    from transformers import AutoTokenizer, BitsAndBytesConfig
-    from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    """Load PEFT checkpoint in bf16, merge SFT adapters, add fresh GRPO LoRA.
 
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    Same approach as _load_base_model_peft: full bf16, untied lm_head,
+    dedicated pad token. No quantization to avoid NaN gradient issue.
+    """
+    import torch
+    from transformers import AutoTokenizer
+    from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoPeftModelForCausalLM.from_pretrained(
         checkpoint_path,
-        quantization_config=bnb_config,
         device_map={"": 0},
         trust_remote_code=True,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
     )
-    # Merge SFT LoRA, then add fresh GRPO LoRA
+    # Merge SFT LoRA into base, then add fresh GRPO LoRA
     model = model.merge_and_unload()
-    model = prepare_model_for_kbit_training(model)
+
+    # Set pad token (tokenizer was already extended during SFT, just verify)
+    _setup_pad_token(tokenizer, model)
+
+    # Untie lm_head BEFORE adding LoRA
+    _untie_lm_head(model)
 
     lora_config = LoraConfig(
         r=lora_r,
@@ -233,35 +244,6 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
-
-    # MobileLLM uses weight tying (embed_tokens == lm_head).
-    # Find the model level that has lm_head (don't unwrap too deep).
-    _m = model
-    _lm_head_owner = None
-    while _m is not None:
-        if hasattr(_m, 'lm_head'):
-            _lm_head_owner = _m
-            break
-        _m = getattr(_m, 'model', None)
-
-    if _lm_head_owner is not None:
-        if hasattr(_lm_head_owner, 'embed_tokens'):
-            _embed = _lm_head_owner.embed_tokens
-        elif hasattr(getattr(_lm_head_owner, 'model', None), 'embed_tokens'):
-            _embed = _lm_head_owner.model.embed_tokens
-        else:
-            _embed = None
-
-        if _embed is not None and _lm_head_owner.lm_head.weight.data_ptr() != _embed.weight.data_ptr():
-            _lm_head_owner.lm_head.weight = _embed.weight
-            print("  [Fix] Re-tied lm_head.weight to embed_tokens.weight")
-
-        def _cast_lm_head_input(module, input):
-            x = input[0]
-            if x.dtype != module.weight.dtype:
-                return (x.to(module.weight.dtype),) + input[1:]
-            return input
-        _lm_head_owner.lm_head.register_forward_pre_hook(_cast_lm_head_input)
 
     return model, tokenizer
 
