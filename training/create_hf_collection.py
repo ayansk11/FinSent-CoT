@@ -47,13 +47,14 @@ MODELS = [
 ]
 
 COLLECTION_TITLE = "FinSenti"
+# HF caps collection descriptions at 150 chars. Keep it tight.
 COLLECTION_DESCRIPTION = (
-    "Financial sentiment analysis with chain-of-thought reasoning. "
-    "16 small models (Qwen3, Qwen3.5, DeepSeek-R1, MobileLLM, Gemma 4, "
-    "Tiny-LLM, Llama 3.2, SmolLM) fine-tuned with SFT + GRPO on 16.9K "
-    "balanced samples. Scaling study spanning 8 architectures from 10M "
-    "to 9B parameters. Each model available as full-precision SafeTensors "
-    "and GGUF (Q4_K_M, Q5_K_M, Q8_0) for Ollama/llama.cpp on consumer hardware."
+    "Small LMs (10M-9B) fine-tuned for financial sentiment with "
+    "chain-of-thought reasoning. SFT + GRPO across 8 architectures. "
+    "Base + GGUF builds."
+)
+assert len(COLLECTION_DESCRIPTION) < 150, (
+    f"Description too long: {len(COLLECTION_DESCRIPTION)} chars (max 149)"
 )
 
 
