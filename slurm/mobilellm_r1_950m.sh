@@ -65,8 +65,16 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install/repair all MobileLLM deps (venv was corrupted by earlier transformers upgrade+revert)
-python -m pip install wandb datasets peft bitsandbytes trl accelerate gguf transformers==5.2.0 -q 2>&1 | tail -3 || true
+# Install/repair MobileLLM deps. Use trl<0.25 to stay compatible with unsloth 2026.4.6
+# (other Qwen jobs share the same ~/.local install).
+python -m pip install wandb datasets peft bitsandbytes 'trl<0.25' accelerate gguf transformers==5.2.0 -q 2>&1 | tail -3 || true
+
+# Fail fast if the environment is still in the broken state that caused job 6893085
+python -c "
+import torch, triton, transformers, trl
+print(f'env: torch={torch.__version__} triton={triton.__version__} transformers={transformers.__version__} trl={trl.__version__}')
+from trl import GRPOConfig, GRPOTrainer
+" || { echo 'Environment sanity check failed. Run the pip install in README before resubmitting.'; exit 1; }
 
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
@@ -74,7 +82,17 @@ export PATH="$PWD/llama.cpp/build/bin:$PATH"
 # A100 compatibility patches
 python training/patch_a100.py
 
-# Run full pipeline
-python training/mobilellm_r1_950m.py --phase all --upload
+# Resume from saved SFT checkpoint. SFT already completed in job 6893085
+# (1.64h, train_loss 1.33, mean_token_accuracy 0.757) and the adapter is at
+# ./checkpoints/sft/mobilellm-r1-950m/. If that directory is missing, add a
+# `python training/mobilellm_r1_950m.py --phase sft` call back before the
+# grpo one below.
+SFT_CKPT=./checkpoints/sft/mobilellm-r1-950m
+if [ ! -f "$SFT_CKPT/adapter_config.json" ]; then
+    echo "SFT checkpoint not found at $SFT_CKPT - running SFT phase first"
+    python training/mobilellm_r1_950m.py --phase sft
+fi
+python training/mobilellm_r1_950m.py --phase grpo
+python training/mobilellm_r1_950m.py --phase export --upload
 
 echo "End: $(date)"
