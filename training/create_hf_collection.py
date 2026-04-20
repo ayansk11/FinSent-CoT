@@ -67,15 +67,15 @@ def main():
 
     # 1. Dataset
     items.append({"repo_id": DATASET_REPO, "type": "dataset",
-                  "note": "Training dataset — 50.8K balanced samples"})
+                  "note": "Training dataset - 50.8K balanced samples"})
 
     # 2. Base models + GGUF (interleaved per model for easy browsing)
     for m in MODELS:
         items.append({"repo_id": m["full"], "type": "model",
-                      "note": f"{m['name']} — Full precision SafeTensors"})
+                      "note": f"{m['name']} - Full precision SafeTensors"})
         if m["gguf"]:
             items.append({"repo_id": m["gguf"], "type": "model",
-                          "note": f"{m['name']} — GGUF (Q4_K_M, Q5_K_M, Q8_0)"})
+                          "note": f"{m['name']} - GGUF (Q4_K_M, Q5_K_M, Q8_0)"})
 
     n_gguf = sum(1 for m in MODELS if m["gguf"])
     print(f"FinSenti Collection")
