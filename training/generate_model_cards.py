@@ -42,16 +42,20 @@ MODELS = [
         "name": "Qwen3-0.6B",
         "family": "Qwen3",
         "params_b": 0.6,
-        "base_model": "Qwen/Qwen3-0.6B",
+        "base_model": "unsloth/Qwen3-0.6B",
+        "upstream_model": "Qwen/Qwen3-0.6B",
         "full_repo": "Ayansk11/FinSenti-Qwen3-0.6B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3-0.6B-GGUF",
         "size_bf16_gb": 1.2,
         "gguf_sizes": {"Q4_K_M": 0.37, "Q5_K_M": 0.41, "Q8_0": 0.60},
         "sft_hours": 0.32,
-        "grpo_steps": 320,
+        "grpo_best_step": 320,
         "best_reward": 3.59,
         "vram_bf16_gb": 2,
         "ram_gguf_gb": 1,
+        "max_seq_length": 2048,
+        "lora_r": 16,
+        "lora_alpha": 32,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "the smallest model in the Qwen3 batch and the easiest one "
@@ -64,16 +68,20 @@ MODELS = [
         "name": "Qwen3-1.7B",
         "family": "Qwen3",
         "params_b": 1.7,
-        "base_model": "Qwen/Qwen3-1.7B",
+        "base_model": "unsloth/Qwen3-1.7B",
+        "upstream_model": "Qwen/Qwen3-1.7B",
         "full_repo": "Ayansk11/FinSenti-Qwen3-1.7B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3-1.7B-GGUF",
         "size_bf16_gb": 3.4,
         "gguf_sizes": {"Q4_K_M": 1.10, "Q5_K_M": 1.26, "Q8_0": 1.83},
         "sft_hours": 0.83,
-        "grpo_steps": 300,
+        "grpo_best_step": 300,
         "best_reward": 3.71,
         "vram_bf16_gb": 4,
         "ram_gguf_gb": 2,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "a useful middle size: small enough to load on a 6 GB laptop "
@@ -86,16 +94,20 @@ MODELS = [
         "name": "Qwen3-4B",
         "family": "Qwen3",
         "params_b": 4.0,
-        "base_model": "Qwen/Qwen3-4B",
+        "base_model": "unsloth/Qwen3-4B",
+        "upstream_model": "Qwen/Qwen3-4B",
         "full_repo": "Ayansk11/FinSenti-Qwen3-4B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3-4B-GGUF",
         "size_bf16_gb": 8.0,
         "gguf_sizes": {"Q4_K_M": 2.40, "Q5_K_M": 2.78, "Q8_0": 4.10},
         "sft_hours": 1.5,
-        "grpo_steps": 300,
+        "grpo_best_step": 300,
         "best_reward": 3.50,
         "vram_bf16_gb": 10,
         "ram_gguf_gb": 4,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "the workhorse of the Qwen3 group: 4 billion params, fits in "
@@ -108,16 +120,20 @@ MODELS = [
         "name": "Qwen3-8B",
         "family": "Qwen3",
         "params_b": 8.0,
-        "base_model": "Qwen/Qwen3-8B",
+        "base_model": "unsloth/Qwen3-8B",
+        "upstream_model": "Qwen/Qwen3-8B",
         "full_repo": "Ayansk11/FinSenti-Qwen3-8B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3-8B-GGUF",
         "size_bf16_gb": 16.0,
         "gguf_sizes": {"Q4_K_M": 4.70, "Q5_K_M": 5.40, "Q8_0": 8.20},
         "sft_hours": 2.0,
-        "grpo_steps": 390,
+        "grpo_best_step": 390,
         "best_reward": 3.50,
         "vram_bf16_gb": 18,
         "ram_gguf_gb": 6,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "the biggest Qwen3 variant in this set. If you have a single "
@@ -130,16 +146,20 @@ MODELS = [
         "name": "Qwen3.5-0.8B",
         "family": "Qwen3.5",
         "params_b": 0.8,
-        "base_model": "Qwen/Qwen3.5-0.8B",
+        "base_model": "unsloth/Qwen3.5-0.8B",
+        "upstream_model": "Qwen/Qwen3.5-0.8B",
         "full_repo": "Ayansk11/FinSenti-Qwen3.5-0.8B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-0.8B-GGUF",
         "size_bf16_gb": 1.6,
         "gguf_sizes": {"Q4_K_M": 0.50, "Q5_K_M": 0.57, "Q8_0": 0.83},
         "sft_hours": 1.36,
-        "grpo_steps": 320,
+        "grpo_best_step": 320,
         "best_reward": 3.55,
         "vram_bf16_gb": 3,
         "ram_gguf_gb": 1,
+        "max_seq_length": 2048,
+        "lora_r": 16,
+        "lora_alpha": 32,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "an updated-pretraining sibling of Qwen3-0.6B with a slightly "
@@ -152,21 +172,25 @@ MODELS = [
         "name": "Qwen3.5-2B",
         "family": "Qwen3.5",
         "params_b": 2.0,
-        "base_model": "Qwen/Qwen3.5-2B",
+        "base_model": "unsloth/Qwen3.5-2B",
+        "upstream_model": "Qwen/Qwen3.5-2B",
         "full_repo": "Ayansk11/FinSenti-Qwen3.5-2B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-2B-GGUF",
         "size_bf16_gb": 4.0,
         "gguf_sizes": {"Q4_K_M": 1.20, "Q5_K_M": 1.40, "Q8_0": 2.10},
         "sft_hours": 3.0,
-        "grpo_steps": 560,
+        "grpo_best_step": 560,
         "best_reward": 3.55,
         "vram_bf16_gb": 5,
         "ram_gguf_gb": 2,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
-            "the mid-size Qwen3.5 variant. The longer GRPO run (560 steps) "
-            "gave it the best format compliance of any model under 4B in "
-            "this study"
+            "the mid-size Qwen3.5 variant. The longer GRPO run (~560 "
+            "steps before early stop) gave it the best format compliance "
+            "of any model under 4B in this study"
         ),
     },
     {
@@ -174,16 +198,20 @@ MODELS = [
         "name": "Qwen3.5-4B",
         "family": "Qwen3.5",
         "params_b": 4.0,
-        "base_model": "Qwen/Qwen3.5-4B",
+        "base_model": "unsloth/Qwen3.5-4B",
+        "upstream_model": "Qwen/Qwen3.5-4B",
         "full_repo": "Ayansk11/FinSenti-Qwen3.5-4B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-4B-GGUF",
         "size_bf16_gb": 8.0,
         "gguf_sizes": {"Q4_K_M": 2.40, "Q5_K_M": 2.78, "Q8_0": 4.10},
         "sft_hours": 5.0,
-        "grpo_steps": 480,
+        "grpo_best_step": 480,
         "best_reward": 3.50,
         "vram_bf16_gb": 10,
         "ram_gguf_gb": 4,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "the 4B model on the newer Qwen3.5 backbone. Output style is "
@@ -196,16 +224,20 @@ MODELS = [
         "name": "Qwen3.5-9B",
         "family": "Qwen3.5",
         "params_b": 9.0,
-        "base_model": "Qwen/Qwen3.5-9B",
+        "base_model": "unsloth/Qwen3.5-9B",
+        "upstream_model": "Qwen/Qwen3.5-9B",
         "full_repo": "Ayansk11/FinSenti-Qwen3.5-9B",
         "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-9B-GGUF",
         "size_bf16_gb": 18.0,
         "gguf_sizes": {"Q4_K_M": 5.50, "Q5_K_M": 6.30, "Q8_0": 9.50},
         "sft_hours": 10.0,
-        "grpo_steps": 420,
+        "grpo_best_step": 420,
         "best_reward": 3.50,
         "vram_bf16_gb": 20,
         "ram_gguf_gb": 7,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "the largest model in the FinSenti family. Reasoning chains "
@@ -218,16 +250,20 @@ MODELS = [
         "name": "DeepSeek-R1-1.5B",
         "family": "DeepSeek",
         "params_b": 1.5,
-        "base_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "base_model": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B",
+        "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
         "full_repo": "Ayansk11/FinSenti-DeepSeek-R1-1.5B",
         "gguf_repo": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-GGUF",
         "size_bf16_gb": 3.0,
         "gguf_sizes": {"Q4_K_M": 1.00, "Q5_K_M": 1.16, "Q8_0": 1.70},
         "sft_hours": 0.6,
-        "grpo_steps": 360,
+        "grpo_best_step": 360,
         "best_reward": 3.13,
         "vram_bf16_gb": 4,
         "ram_gguf_gb": 2,
+        "max_seq_length": 2048,
+        "lora_r": 32,
+        "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
             "built on DeepSeek's R1 distillation, so it already had a "
@@ -236,6 +272,11 @@ MODELS = [
         ),
     },
 ]
+
+# Cluster-wide constants used in every training script.
+GRPO_BUDGET_STEPS = 3000  # all training/*.py have GRPO_MAX_STEPS = 3000
+DATASET_REPO = "Ayansk11/FinSenti-Dataset"
+DATASET_SAMPLES = "50.8K"
 
 
 # -----------------------------------------------------------------------------
@@ -384,13 +425,9 @@ def _gguf_quant_table(m: dict) -> str:
 
 def make_base_card(m: dict) -> str:
     """Generate the README for the full-precision SafeTensors repo."""
-    yaml = YAML_BASE.format(base_model=m["base_model"])
+    yaml = YAML_BASE.format(base_model=m["upstream_model"])
     related = _related_models_section(m["key"])
     hardware = _hardware_recommendation(m)
-    other_in_family = ", ".join(
-        x["name"] for x in MODELS
-        if x["family"] == m["family"] and x["key"] != m["key"]
-    ) or "(it's the only one in this family so far)"
 
     body = f"""# FinSenti-{m['name']}
 
@@ -420,19 +457,25 @@ but the labels get noisier.
 Two-stage recipe, same across the whole FinSenti family:
 
 1. **SFT** on the [FinSenti
-   dataset](https://huggingface.co/datasets/Ayansk11/FinSenti-Dataset)
-   (50.8K samples, balanced across the three labels, with chain-of-thought
-   targets generated by a teacher model and filtered for label agreement).
-   This stage took about {m['sft_hours']:.1f} hours on a single A100 80GB
-   for this model.
+   dataset]({"https://huggingface.co/datasets/" + DATASET_REPO})
+   ({DATASET_SAMPLES} samples, balanced across the three labels, with
+   chain-of-thought targets generated by a teacher model and filtered
+   for label agreement). This stage took about {m['sft_hours']:.1f}
+   hours on a single A100 80GB for this model.
 2. **GRPO** with four reward functions (sentiment correctness, format
    compliance, reasoning quality, output consistency), each weighted equally
-   for a maximum reward of 4.0. Best mean reward observed during the run
-   was **{m['best_reward']:.2f} / 4.0** at around step {m['grpo_steps']}.
+   for a maximum reward of 4.0. The training budget was {GRPO_BUDGET_STEPS}
+   steps with early stopping; the best checkpoint landed near step
+   ~{m['grpo_best_step']} with a mean reward of approximately
+   **{m['best_reward']:.2f} / 4.0** on the validation slice.
 
-Trainer stack: {m['trainer']}, with LoRA adapters on the attention and MLP
-projection layers. The adapters were merged into the base weights before
-the final SafeTensors export, so this repo is a self-contained model and
+Trainer stack: {m['trainer']}, using Unsloth's pre-quantized mirror
+[`{m['base_model']}`](https://huggingface.co/{m['base_model']}) as the
+loading shortcut for the upstream
+[`{m['upstream_model']}`](https://huggingface.co/{m['upstream_model']})
+weights. LoRA adapters (r={m['lora_r']}, alpha={m['lora_alpha']}) were
+trained on the attention and MLP projection layers, then merged into the
+base weights before export, so this repo is a self-contained model and
 doesn't need PEFT to load.
 
 ## Quick start
@@ -510,8 +553,8 @@ are forthcoming and will be added once the eval pipeline lands.
 
 A few things this model isn't built for:
 
-- **Long documents.** Training context was capped at 1024 tokens. Anything
-  much longer than a paragraph or two is out of distribution.
+- **Long documents.** Training context was capped at {m['max_seq_length']}
+  tokens. Anything much longer than a few paragraphs is out of distribution.
 - **Multi-asset reasoning.** It classifies the sentiment of a single piece
   of text. It won't aggregate across multiple headlines or weigh sources.
 - **Numerical reasoning.** It can read "beats by 12%" and call that
@@ -528,13 +571,14 @@ A few things this model isn't built for:
 
 | | |
 |---|---|
-| Base model | [{m['base_model']}](https://huggingface.co/{m['base_model']}) |
-| Dataset | [Ayansk11/FinSenti-Dataset](https://huggingface.co/datasets/Ayansk11/FinSenti-Dataset) (50.8K samples) |
+| Upstream base model | [{m['upstream_model']}](https://huggingface.co/{m['upstream_model']}) |
+| Loading mirror | [{m['base_model']}](https://huggingface.co/{m['base_model']}) (Unsloth's pre-quantized copy) |
+| Dataset | [{DATASET_REPO}](https://huggingface.co/datasets/{DATASET_REPO}) ({DATASET_SAMPLES} samples) |
 | SFT length | ~{m['sft_hours']:.1f} hours on A100 80GB |
-| GRPO steps | {m['grpo_steps']} |
-| Best GRPO reward | {m['best_reward']:.2f} / 4.0 |
-| Adapter | LoRA (r=16, alpha=32) on q/k/v/o/gate/up/down projections |
-| Sequence length | 1024 |
+| GRPO budget | {GRPO_BUDGET_STEPS} steps with early stopping (best near step ~{m['grpo_best_step']}) |
+| Best GRPO reward | ~{m['best_reward']:.2f} / 4.0 |
+| Adapter | LoRA (r={m['lora_r']}, alpha={m['lora_alpha']}) on q/k/v/o/gate/up/down projections |
+| Sequence length | {m['max_seq_length']} |
 | Optimizer | AdamW (8-bit), cosine LR schedule |
 | Hardware | NVIDIA A100 80GB (Indiana University BigRed200 cluster) |
 | Frameworks | {m['trainer']} |
@@ -710,7 +754,7 @@ block for the label.
 GGUF is a faithful conversion of the base model, so the same caveats apply:
 
 - English only
-- Short text only (training context was 1024 tokens)
+- Short text only (training context was {m['max_seq_length']} tokens)
 - Three labels: positive, negative, neutral
 - It explains its read but it isn't doing finance research; don't use the
   reasoning chain as investment advice

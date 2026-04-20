@@ -93,18 +93,27 @@ def main():
         return
 
     api = HfApi()
-    slug = COLLECTION_TITLE.lower().replace(" ", "-")
 
-    # Check for existing collection
+    # Find an existing collection by exact title match, owned by this namespace.
+    # (The old lookup used `item=DATASET_REPO` which silently returns nothing
+    # if the dataset isn't already in the collection - and then we'd create a
+    # duplicate every run.)
+    existing = []
     try:
-        existing = api.list_collections(owner=args.namespace, item=DATASET_REPO)
-        existing = [c for c in existing if COLLECTION_TITLE.lower() in c.title.lower()]
-    except Exception:
-        existing = []
+        for c in api.list_collections(owner=args.namespace):
+            if c.title.strip().lower() == COLLECTION_TITLE.lower():
+                existing.append(c)
+    except Exception as e:
+        print(f"  [WARN] Could not list existing collections: {e}")
 
     if existing:
         collection = existing[0]
         print(f"\n  Found existing collection: {collection.slug}")
+        if len(existing) > 1:
+            print(f"  [WARN] Multiple collections titled {COLLECTION_TITLE!r} found:")
+            for c in existing:
+                print(f"    - {c.slug}")
+            print("  Using the first one. Delete the others by hand if needed.")
     else:
         collection = api.create_collection(
             title=COLLECTION_TITLE,
