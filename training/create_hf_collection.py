@@ -1,5 +1,5 @@
 """
-Create/update the FinSenti HuggingFace Collection.
+Create/update the FinSent HuggingFace Collection.
 
 Groups all 19 repos (1 dataset + 10 base + 9 GGUF) into a single
 collection for easy discovery.
@@ -16,37 +16,37 @@ from huggingface_hub import HfApi
 
 # ─── All repos in the collection ─────────────────────────────────────────────
 
-DATASET_REPO = "Ayansk11/FinSenti-Dataset"
+DATASET_REPO = "Ayansk11/FinSent-Dataset"
 
 # Models ordered by family, then ascending parameter count.
 MODELS = [
     # ── Qwen3 family ────────────────────────────────────────────────────
-    {"key": "qwen3-0.6b",     "name": "Qwen3-0.6B",       "family": "Qwen3",    "full": "Ayansk11/FinSenti-Qwen3-0.6B",         "gguf": "Ayansk11/FinSenti-Qwen3-0.6B-GGUF"},
-    {"key": "qwen3-1.7b",     "name": "Qwen3-1.7B",       "family": "Qwen3",    "full": "Ayansk11/FinSenti-Qwen3-1.7B",         "gguf": "Ayansk11/FinSenti-Qwen3-1.7B-GGUF"},
-    {"key": "qwen3-4b",       "name": "Qwen3-4B",         "family": "Qwen3",    "full": "Ayansk11/FinSenti-Qwen3-4B",           "gguf": "Ayansk11/FinSenti-Qwen3-4B-GGUF"},
-    {"key": "qwen3-8b",       "name": "Qwen3-8B",         "family": "Qwen3",    "full": "Ayansk11/FinSenti-Qwen3-8B",           "gguf": "Ayansk11/FinSenti-Qwen3-8B-GGUF"},
+    {"key": "qwen3-0.6b",     "name": "Qwen3-0.6B",       "family": "Qwen3",    "full": "Ayansk11/FinSent-Qwen3-0.6B",         "gguf": "Ayansk11/FinSent-Qwen3-0.6B-GGUF"},
+    {"key": "qwen3-1.7b",     "name": "Qwen3-1.7B",       "family": "Qwen3",    "full": "Ayansk11/FinSent-Qwen3-1.7B",         "gguf": "Ayansk11/FinSent-Qwen3-1.7B-GGUF"},
+    {"key": "qwen3-4b",       "name": "Qwen3-4B",         "family": "Qwen3",    "full": "Ayansk11/FinSent-Qwen3-4B",           "gguf": "Ayansk11/FinSent-Qwen3-4B-GGUF"},
+    {"key": "qwen3-8b",       "name": "Qwen3-8B",         "family": "Qwen3",    "full": "Ayansk11/FinSent-Qwen3-8B",           "gguf": "Ayansk11/FinSent-Qwen3-8B-GGUF"},
     # ── Qwen3.5 family ──────────────────────────────────────────────────
-    {"key": "qwen3.5-0.8b",   "name": "Qwen3.5-0.8B",     "family": "Qwen3.5",  "full": "Ayansk11/FinSenti-Qwen3.5-0.8B",       "gguf": "Ayansk11/FinSenti-Qwen3.5-0.8B-GGUF"},
-    {"key": "qwen3.5-2b",     "name": "Qwen3.5-2B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSenti-Qwen3.5-2B",         "gguf": "Ayansk11/FinSenti-Qwen3.5-2B-GGUF"},
-    {"key": "qwen3.5-4b",     "name": "Qwen3.5-4B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSenti-Qwen3.5-4B",         "gguf": "Ayansk11/FinSenti-Qwen3.5-4B-GGUF"},
-    {"key": "qwen3.5-9b",     "name": "Qwen3.5-9B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSenti-Qwen3.5-9B",         "gguf": "Ayansk11/FinSenti-Qwen3.5-9B-GGUF"},
+    {"key": "qwen3.5-0.8b",   "name": "Qwen3.5-0.8B",     "family": "Qwen3.5",  "full": "Ayansk11/FinSent-Qwen3.5-0.8B",       "gguf": "Ayansk11/FinSent-Qwen3.5-0.8B-GGUF"},
+    {"key": "qwen3.5-2b",     "name": "Qwen3.5-2B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSent-Qwen3.5-2B",         "gguf": "Ayansk11/FinSent-Qwen3.5-2B-GGUF"},
+    {"key": "qwen3.5-4b",     "name": "Qwen3.5-4B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSent-Qwen3.5-4B",         "gguf": "Ayansk11/FinSent-Qwen3.5-4B-GGUF"},
+    {"key": "qwen3.5-9b",     "name": "Qwen3.5-9B",       "family": "Qwen3.5",  "full": "Ayansk11/FinSent-Qwen3.5-9B",         "gguf": "Ayansk11/FinSent-Qwen3.5-9B-GGUF"},
     # ── DeepSeek family ─────────────────────────────────────────────────
-    {"key": "deepseek-r1-1.5b","name": "DeepSeek-R1-1.5B", "family": "DeepSeek", "full": "Ayansk11/FinSenti-DeepSeek-R1-1.5B",   "gguf": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-GGUF"},
+    {"key": "deepseek-r1-1.5b","name": "DeepSeek-R1-1.5B", "family": "DeepSeek", "full": "Ayansk11/FinSent-DeepSeek-R1-1.5B",   "gguf": "Ayansk11/FinSent-DeepSeek-R1-1.5B-GGUF"},
     # ── MobileLLM family ────────────────────────────────────────────────
-    {"key": "mobilellm-r1-950m","name": "MobileLLM-R1-950M","family": "MobileLLM","full": "Ayansk11/FinSenti-MobileLLM-R1-950M",  "gguf": None},
+    {"key": "mobilellm-r1-950m","name": "MobileLLM-R1-950M","family": "MobileLLM","full": "Ayansk11/FinSent-MobileLLM-R1-950M",  "gguf": None},
     # ── Gemma 4 family ──────────────────────────────────────────────────
-    {"key": "gemma4-e2b",      "name": "Gemma4-E2B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E2B",         "gguf": "Ayansk11/FinSenti-Gemma4-E2B-GGUF"},
-    {"key": "gemma4-e4b",      "name": "Gemma4-E4B",       "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-E4B",         "gguf": "Ayansk11/FinSenti-Gemma4-E4B-GGUF"},
-    {"key": "gemma4-26b-a4b",  "name": "Gemma4-26B-A4B",   "family": "Gemma4",   "full": "Ayansk11/FinSenti-Gemma4-26B-A4B",     "gguf": "Ayansk11/FinSenti-Gemma4-26B-A4B-GGUF"},
+    {"key": "gemma4-e2b",      "name": "Gemma4-E2B",       "family": "Gemma4",   "full": "Ayansk11/FinSent-Gemma4-E2B",         "gguf": "Ayansk11/FinSent-Gemma4-E2B-GGUF"},
+    {"key": "gemma4-e4b",      "name": "Gemma4-E4B",       "family": "Gemma4",   "full": "Ayansk11/FinSent-Gemma4-E4B",         "gguf": "Ayansk11/FinSent-Gemma4-E4B-GGUF"},
+    {"key": "gemma4-26b-a4b",  "name": "Gemma4-26B-A4B",   "family": "Gemma4",   "full": "Ayansk11/FinSent-Gemma4-26B-A4B",     "gguf": "Ayansk11/FinSent-Gemma4-26B-A4B-GGUF"},
     # ── Tiny-LLM family (scaling lower bound) ───────────────────────────
-    {"key": "tiny-llm-10m",    "name": "Tiny-LLM-10M",     "family": "TinyLLM",  "full": "Ayansk11/FinSenti-Tiny-LLM-10M",       "gguf": "Ayansk11/FinSenti-Tiny-LLM-10M-GGUF"},
+    {"key": "tiny-llm-10m",    "name": "Tiny-LLM-10M",     "family": "TinyLLM",  "full": "Ayansk11/FinSent-Tiny-LLM-10M",       "gguf": "Ayansk11/FinSent-Tiny-LLM-10M-GGUF"},
     # ── Llama 3.2 family ────────────────────────────────────────────────
-    {"key": "llama-3.2-1b",    "name": "Llama-3.2-1B",     "family": "Llama3",   "full": "Ayansk11/FinSenti-Llama-3.2-1B",       "gguf": "Ayansk11/FinSenti-Llama-3.2-1B-GGUF"},
+    {"key": "llama-3.2-1b",    "name": "Llama-3.2-1B",     "family": "Llama3",   "full": "Ayansk11/FinSent-Llama-3.2-1B",       "gguf": "Ayansk11/FinSent-Llama-3.2-1B-GGUF"},
     # ── SmolLM family ───────────────────────────────────────────────────
-    {"key": "smollm-1.7b",     "name": "SmolLM-1.7B",      "family": "SmolLM",   "full": "Ayansk11/FinSenti-SmolLM-1.7B",        "gguf": "Ayansk11/FinSenti-SmolLM-1.7B-GGUF"},
+    {"key": "smollm-1.7b",     "name": "SmolLM-1.7B",      "family": "SmolLM",   "full": "Ayansk11/FinSent-SmolLM-1.7B",        "gguf": "Ayansk11/FinSent-SmolLM-1.7B-GGUF"},
 ]
 
-COLLECTION_TITLE = "FinSenti"
+COLLECTION_TITLE = "FinSent"
 # HF caps collection descriptions at 150 chars. Keep it tight.
 COLLECTION_DESCRIPTION = (
     "Small LMs (10M-9B) fine-tuned for financial sentiment with "
@@ -59,7 +59,7 @@ assert len(COLLECTION_DESCRIPTION) < 150, (
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create FinSenti HuggingFace collection")
+    parser = argparse.ArgumentParser(description="Create FinSent HuggingFace collection")
     parser.add_argument("--dry-run", action="store_true", help="Preview repos without creating")
     parser.add_argument("--namespace", default="Ayansk11", help="HF namespace")
     args = parser.parse_args()
@@ -79,7 +79,7 @@ def main():
                           "note": f"{m['name']} - GGUF (Q4_K_M, Q5_K_M, Q8_0)"})
 
     n_gguf = sum(1 for m in MODELS if m["gguf"])
-    print(f"FinSenti Collection")
+    print(f"FinSent Collection")
     print(f"  Total items: {len(items)} (1 dataset + {len(MODELS)} base + {n_gguf} GGUF)")
     print()
 

@@ -10,7 +10,7 @@ to the target tensor's dtype. The .to(dt) call is a no-op when dtypes
 already match, so there is zero overhead on H100/other GPUs.
 
 Usage:
-    import a100_compat  # noqa: F401  — must be before unsloth imports
+    import a100_compat  # noqa: F401  - must be before unsloth imports
 """
 
 import torch

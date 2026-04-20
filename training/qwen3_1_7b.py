@@ -1,9 +1,9 @@
 """
-FinSenti — Qwen3-1.7B: SFT -> GRPO -> Export -> Upload
+FinSent - Qwen3-1.7B: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
 Uses Unsloth for all phases (SFT, GRPO, Export).
-Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
+Dataset: Ayansk11/FinSent-Dataset (local validated splits)
 
 Usage:
     python qwen3_1_7b.py --phase all          # Full pipeline
@@ -12,7 +12,7 @@ Usage:
     python qwen3_1_7b.py --phase export       # Export only
 """
 
-import a100_compat  # noqa: F401 — must be before unsloth (patches addmm_ for A100)
+import a100_compat  # noqa: F401 - must be before unsloth (patches addmm_ for A100)
 import argparse
 import json
 import os
@@ -79,12 +79,12 @@ GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
-HF_FULL = "Ayansk11/FinSenti-Qwen3-1.7B"
-HF_GGUF = "Ayansk11/FinSenti-Qwen3-1.7B-GGUF"
+HF_FULL = "Ayansk11/FinSent-Qwen3-1.7B"
+HF_GGUF = "Ayansk11/FinSent-Qwen3-1.7B-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
-    4: "Ayansk11/FinSenti-Qwen3-1.7B-MLX-4bit",
-    8: "Ayansk11/FinSenti-Qwen3-1.7B-MLX-8bit",
+    4: "Ayansk11/FinSent-Qwen3-1.7B-MLX-4bit",
+    8: "Ayansk11/FinSent-Qwen3-1.7B-MLX-8bit",
 }
 
 # Paths
@@ -146,7 +146,7 @@ def run_sft():
     from trl import SFTConfig, SFTTrainer
 
     print("=" * 70)
-    print(f"FinSenti SFT — {SHORT_NAME}")
+    print(f"FinSent SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
     print(f"  LoRA:        r={SFT_LORA_R}, alpha={SFT_LORA_ALPHA}")
@@ -154,7 +154,7 @@ def run_sft():
     print(f"  LR: {SFT_LR}, Epochs: {SFT_EPOCHS}")
     print()
 
-    _wandb_init_safe(project="FinSenti", name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
+    _wandb_init_safe(project="FinSent", name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
                tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY],
                config={"phase": "sft", "model_key": MODEL_KEY, "base_model": BASE_MODEL,
                        "epochs": SFT_EPOCHS, "batch_size": SFT_BATCH_SIZE, "lr": SFT_LR,
@@ -208,7 +208,7 @@ def run_sft():
 
 
 def _patch_masked_batch_mean():
-    """Fix Unsloth's masked_batch_mean tensor mismatch (closure — must patch source file)."""
+    """Fix Unsloth's masked_batch_mean tensor mismatch (closure - must patch source file)."""
     import importlib
     import importlib.util
     import glob as _glob
@@ -227,18 +227,18 @@ def _patch_masked_batch_mean():
             cache_mod = mod
             break
     if cache_mod is None:
-        print("  [Patch] Unsloth GRPOTrainer cache not found — skipping")
+        print("  [Patch] Unsloth GRPOTrainer cache not found - skipping")
         return None
     filepath = cache_mod.__file__
     try:
         with open(filepath, 'r') as f:
             content = f.read()
     except FileNotFoundError:
-        print(f'  [Patch] Cache file deleted by another job — skipping: {filepath}')
+        print(f'  [Patch] Cache file deleted by another job - skipping: {filepath}')
         return None
     count = content.count(OLD)
     if count == 0:
-        print(f"  [Patch] {filepath} — already patched")
+        print(f"  [Patch] {filepath} - already patched")
         return None
     with open(filepath, 'w') as f:
         f.write(content.replace(OLD, NEW))
@@ -246,7 +246,7 @@ def _patch_masked_batch_mean():
     if os.path.isdir(pycache):
         for pyc in _glob.glob(os.path.join(pycache, '*.pyc')):
             os.remove(pyc)
-    # Robust manual reload — importlib.reload fails for dynamically-loaded modules
+    # Robust manual reload - importlib.reload fails for dynamically-loaded modules
     mod_name = cache_mod.__name__
     sys.modules.pop(mod_name, None)
     loader = importlib.machinery.SourceFileLoader(mod_name, filepath)
@@ -274,14 +274,14 @@ def run_grpo():
         GRPOTrainer = _patched
 
     print("=" * 70)
-    print(f"FinSenti GRPO — {SHORT_NAME}")
+    print(f"FinSent GRPO - {SHORT_NAME}")
     print("=" * 70)
     print(f"  LoRA:  r={GRPO_LORA_R}, alpha={GRPO_LORA_ALPHA}")
     print(f"  Batch: {GRPO_BATCH_SIZE} x {GRPO_GRAD_ACCUM} = {GRPO_BATCH_SIZE * GRPO_GRAD_ACCUM}")
     print(f"  LR: {GRPO_LR}, Gens: {GRPO_NUM_GENERATIONS}, Max steps: {GRPO_MAX_STEPS}")
     print()
 
-    _wandb_init_safe(project="FinSenti", name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
+    _wandb_init_safe(project="FinSent", name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
                tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY],
                config={"phase": "grpo", "model_key": MODEL_KEY, "max_steps": GRPO_MAX_STEPS,
                        "batch_size": GRPO_BATCH_SIZE, "lr": GRPO_LR,
@@ -330,7 +330,7 @@ def run_grpo():
 
     steps = trainer.state.global_step
     print(f"\n{'='*70}")
-    print(f"GRPO REPORT — {SHORT_NAME}: {steps}/{GRPO_MAX_STEPS} steps, {elapsed/3600:.2f}h")
+    print(f"GRPO REPORT - {SHORT_NAME}: {steps}/{GRPO_MAX_STEPS} steps, {elapsed/3600:.2f}h")
     print(f"  Early stopped: {early_stop.should_stop}, Best: {early_stop.best_reward:.4f}")
     print(f"{'='*70}")
     try:
@@ -347,13 +347,13 @@ def run_export(upload=False):
 
     output_dir = Path(EXPORT_OUTPUT)
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_name = f"FinSenti-{SHORT_NAME}"
+    model_name = f"FinSent-{SHORT_NAME}"
 
     print("=" * 70)
-    print(f"FinSenti Export — {SHORT_NAME}")
+    print(f"FinSent Export - {SHORT_NAME}")
     print("=" * 70)
 
-    _wandb_init_safe(project="FinSenti", name=f"export-{SHORT_NAME}", tags=["export", "gguf", MODEL_KEY])
+    _wandb_init_safe(project="FinSent", name=f"export-{SHORT_NAME}", tags=["export", "gguf", MODEL_KEY])
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=True)
 
@@ -402,7 +402,7 @@ def run_export(upload=False):
             mlx_size = sum(os.path.getsize(str(f)) for f in mlx_dir.rglob("*") if f.is_file())
             print(f"    -> {mlx_size / (1024**3):.2f} GB ({elapsed:.0f}s)")
     except ImportError:
-        print("\n  [SKIP] mlx-lm not installed — MLX export skipped (run on Apple Silicon)")
+        print("\n  [SKIP] mlx-lm not installed - MLX export skipped (run on Apple Silicon)")
     except Exception as e:
         print(f"\n  [WARN] MLX conversion failed: {e}")
 
@@ -435,13 +435,13 @@ def run_export(upload=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=f"FinSenti {SHORT_NAME}: SFT -> GRPO -> Export")
+    parser = argparse.ArgumentParser(description=f"FinSent {SHORT_NAME}: SFT -> GRPO -> Export")
     parser.add_argument("--phase", choices=["sft", "grpo", "export", "all"], default="all")
     parser.add_argument("--upload", action="store_true")
     args = parser.parse_args()
 
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
-    print(f"\n{'#'*70}\n# FinSenti Pipeline — {SHORT_NAME}\n# Phases: {' -> '.join(phases)}\n{'#'*70}\n")
+    print(f"\n{'#'*70}\n# FinSent Pipeline - {SHORT_NAME}\n# Phases: {' -> '.join(phases)}\n{'#'*70}\n")
     for phase in phases:
         if phase == "sft": run_sft()
         elif phase == "grpo": run_grpo()

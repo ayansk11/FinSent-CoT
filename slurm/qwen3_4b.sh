@@ -13,12 +13,12 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSenti — Qwen3-4B full pipeline (SFT -> GRPO -> Export)
+# FinSent - Qwen3-4B full pipeline (SFT -> GRPO -> Export)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
 
-echo "=== Job $SLURM_JOB_ID — Qwen3-4B ==="
+echo "=== Job $SLURM_JOB_ID - Qwen3-4B ==="
 echo "Node: $SLURM_NODELIST | GPUs: $SLURM_GPUS_ON_NODE | Start: $(date)"
 
 # Stagger start to avoid HF Hub rate limiting when multiple jobs launch together
@@ -45,14 +45,14 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSenti
+export WANDB_PROJECT=FinSent
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
 # Clear stale Unsloth compiled cache (may be from different TRL version)
 rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 
-# A100 compatibility patches — must run BEFORE patch_unsloth_cache (which
+# A100 compatibility patches - must run BEFORE patch_unsloth_cache (which
 # imports unsloth). If fast_lora.py is corrupted, this repairs it first.
 python training/patch_a100.py
 

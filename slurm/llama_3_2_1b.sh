@@ -13,12 +13,12 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSenti — Llama-3.2-1B full pipeline (SFT -> GRPO -> Export)
+# FinSent - Llama-3.2-1B full pipeline (SFT -> GRPO -> Export)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
 
-echo "=== Job $SLURM_JOB_ID — Llama-3.2-1B ==="
+echo "=== Job $SLURM_JOB_ID - Llama-3.2-1B ==="
 echo "Node: $SLURM_NODELIST | GPUs: $SLURM_GPUS_ON_NODE | Start: $(date)"
 
 # Stagger start to avoid HF Hub rate limiting when multiple jobs launch together
@@ -47,7 +47,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSenti
+export WANDB_PROJECT=FinSent
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
@@ -57,7 +57,7 @@ rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 # Install/repair unsloth + gguf BEFORE any patches that import unsloth
 python -m pip install unsloth gguf -q 2>&1 | tail -3 || true
 
-# A100 compatibility patches — must run BEFORE patch_unsloth_cache (which
+# A100 compatibility patches - must run BEFORE patch_unsloth_cache (which
 # imports unsloth). If fast_lora.py is corrupted, this repairs it first.
 python training/patch_a100.py
 

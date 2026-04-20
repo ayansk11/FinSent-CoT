@@ -104,7 +104,7 @@ def patch_unsloth_stats():
                 indent = next_line[: len(next_line) - len(next_line.lstrip())]
             if not indent:
                 indent = "    "
-            patched_lines.append(f"{indent}return  # STATS_PATCHED — disabled to avoid HF 429 rate limit")
+            patched_lines.append(f"{indent}return  # STATS_PATCHED - disabled to avoid HF 429 rate limit")
             patched = True
 
     if patched:
@@ -129,8 +129,8 @@ def generate_cache():
     """Import unsloth + trl to generate the compiled cache if needed."""
     print("Generating Unsloth compiled cache (importing unsloth + trl)...")
     os.environ.setdefault("WANDB_DISABLED", "true")
-    import unsloth  # noqa: F401 — generates the cache
-    from trl import GRPOConfig, GRPOTrainer  # noqa: F401 — triggers patching
+    import unsloth  # noqa: F401 - generates the cache
+    from trl import GRPOConfig, GRPOTrainer  # noqa: F401 - triggers patching
     print("Cache generated.")
 
 
@@ -222,7 +222,7 @@ def main():
             sys.exit(1)
 
     if not files:
-        print("WARNING: Could not find Unsloth compiled cache after generation — skipping patch.")
+        print("WARNING: Could not find Unsloth compiled cache after generation - skipping patch.")
         print("  If masked_batch_mean tensor mismatch occurs during GRPO, re-run with cache.")
         sys.exit(0)
 

@@ -1,12 +1,12 @@
 """
-FinSenti — MobileLLM-R1-950M: SFT -> GRPO -> Export -> Upload
+FinSent - MobileLLM-R1-950M: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
 Uses standard PEFT + bitsandbytes (Unsloth does not support MobileLLM arch).
 Export: merges PEFT adapters and saves HF weights. GGUF conversion requires
 manual llama.cpp convert_hf_to_gguf.py.
 
-Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
+Dataset: Ayansk11/FinSent-Dataset (local validated splits)
 
 Usage:
     python mobilellm_r1_950m.py --phase all          # Full pipeline
@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 # Ensure rewards.py and callbacks.py (in same dir) are importable from any cwd
-# Must use .resolve() for absolute path — trainer.train() changes cwd
+# Must use .resolve() for absolute path - trainer.train() changes cwd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
@@ -79,12 +79,12 @@ GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
-HF_FULL = "Ayansk11/FinSenti-MobileLLM-R1-950M"
-HF_GGUF = "Ayansk11/FinSenti-MobileLLM-R1-950M-GGUF"
+HF_FULL = "Ayansk11/FinSent-MobileLLM-R1-950M"
+HF_GGUF = "Ayansk11/FinSent-MobileLLM-R1-950M-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
-    4: "Ayansk11/FinSenti-MobileLLM-R1-950M-MLX-4bit",
-    8: "Ayansk11/FinSenti-MobileLLM-R1-950M-MLX-8bit",
+    4: "Ayansk11/FinSent-MobileLLM-R1-950M-MLX-4bit",
+    8: "Ayansk11/FinSent-MobileLLM-R1-950M-MLX-8bit",
 }
 
 # Paths
@@ -134,7 +134,7 @@ def _setup_pad_token(tokenizer, model):
         or (tokenizer.eos_token_id is not None and tokenizer.pad_token_id == tokenizer.eos_token_id)
     )
     if needs_new_pad:
-        tokenizer.add_special_tokens({"pad_token": "<|finsenti_pad|>"})
+        tokenizer.add_special_tokens({"pad_token": "<|finsent_pad|>"})
         if model is not None:
             model.resize_token_embeddings(len(tokenizer))
         print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
@@ -154,12 +154,12 @@ def _untie_lm_head(model):
             break
         inner = getattr(inner, 'model', None)
     if lm_head_owner is None:
-        print("  [Warn] Could not find lm_head — skipping untie")
+        print("  [Warn] Could not find lm_head - skipping untie")
         return
     embed = getattr(lm_head_owner, 'embed_tokens', None) \
         or getattr(getattr(lm_head_owner, 'model', None), 'embed_tokens', None)
     if embed is None:
-        print("  [Warn] Could not find embed_tokens — skipping untie")
+        print("  [Warn] Could not find embed_tokens - skipping untie")
         return
     if lm_head_owner.lm_head.weight.data_ptr() == embed.weight.data_ptr():
         new_weight = nn.Parameter(embed.weight.detach().clone())
@@ -261,7 +261,7 @@ def run_sft():
     from trl import SFTConfig, SFTTrainer
 
     print("=" * 70)
-    print(f"FinSenti SFT — {SHORT_NAME}")
+    print(f"FinSent SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
     print(f"  Backend:     PEFT + bitsandbytes (no Unsloth)")
@@ -271,7 +271,7 @@ def run_sft():
     print()
 
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY, "peft"],
         config={
@@ -396,7 +396,7 @@ def run_grpo():
     from callbacks import RewardEarlyStoppingCallback
 
     print("=" * 70)
-    print(f"FinSenti GRPO — {SHORT_NAME}")
+    print(f"FinSent GRPO - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Backend:     Standard TRL GRPOTrainer (no Unsloth)")
     print(f"  LoRA:        r={GRPO_LORA_R}, alpha={GRPO_LORA_ALPHA}")
@@ -405,7 +405,7 @@ def run_grpo():
     print()
 
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY, "peft"],
         config={
@@ -505,7 +505,7 @@ def run_grpo():
 
     steps = trainer.state.global_step
     print(f"\n{'='*70}")
-    print(f"GRPO REPORT — {SHORT_NAME}: {steps}/{GRPO_MAX_STEPS} steps, {elapsed/3600:.2f}h")
+    print(f"GRPO REPORT - {SHORT_NAME}: {steps}/{GRPO_MAX_STEPS} steps, {elapsed/3600:.2f}h")
     print(f"  Early stopped: {early_stop.should_stop}, Best: {early_stop.best_reward:.4f}")
     print(f"{'='*70}")
 
@@ -523,7 +523,7 @@ def run_grpo():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Phase 3: Export (PEFT merge — no Unsloth GGUF)
+# Phase 3: Export (PEFT merge - no Unsloth GGUF)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_export(upload=False):
@@ -537,7 +537,7 @@ def run_export(upload=False):
     merged_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print(f"FinSenti Export — {SHORT_NAME}")
+    print(f"FinSent Export - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Method:    PEFT merge (no Unsloth GGUF)")
     print(f"  Source:    {GRPO_OUTPUT}")
@@ -546,7 +546,7 @@ def run_export(upload=False):
     print()
 
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"export-{SHORT_NAME}",
         tags=["export", "peft-merge", MODEL_KEY],
         config={
@@ -594,7 +594,7 @@ def run_export(upload=False):
             mlx_size = sum(os.path.getsize(str(f)) for f in mlx_dir.rglob("*") if f.is_file())
             print(f"    -> {mlx_size / (1024**3):.2f} GB ({elapsed:.0f}s)")
     except ImportError:
-        print("\n  [SKIP] mlx-lm not installed — MLX export skipped (run on Apple Silicon)")
+        print("\n  [SKIP] mlx-lm not installed - MLX export skipped (run on Apple Silicon)")
     except Exception as e:
         print(f"\n  [WARN] MLX conversion failed: {e}")
 
@@ -632,7 +632,7 @@ def run_export(upload=False):
     wandb.finish()
 
     print(f"\n{'='*70}")
-    print(f"EXPORT COMPLETE — {SHORT_NAME} (HF weights only)")
+    print(f"EXPORT COMPLETE - {SHORT_NAME} (HF weights only)")
     print(f"{'='*70}")
     print(f"  Merged weights: {merged_dir} ({size_mb} MB)")
     print(f"  Full-precision repo: {HF_FULL}")
@@ -648,7 +648,7 @@ def run_export(upload=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"FinSenti {SHORT_NAME}: SFT -> GRPO -> Export"
+        description=f"FinSent {SHORT_NAME}: SFT -> GRPO -> Export"
     )
     parser.add_argument(
         "--phase",
@@ -661,7 +661,7 @@ def main():
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
 
     print(f"\n{'#'*70}")
-    print(f"# FinSenti Pipeline — {SHORT_NAME} (PEFT)")
+    print(f"# FinSent Pipeline - {SHORT_NAME} (PEFT)")
     print(f"# Phases: {' -> '.join(phases)}")
     print(f"{'#'*70}\n")
 

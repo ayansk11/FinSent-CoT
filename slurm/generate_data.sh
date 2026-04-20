@@ -35,7 +35,7 @@ echo "GPUs: $SLURM_GPUS_ON_NODE"
 echo "Start: $(date)"
 echo "================"
 
-# ─── Cache redirect (CRITICAL — home dir has 5GB quota) ─────────────────────
+# ─── Cache redirect (CRITICAL - home dir has 5GB quota) ─────────────────────
 export HF_HOME=/N/scratch/ayshaikh/.cache/huggingface
 export HF_HUB_CACHE=/N/scratch/ayshaikh/.cache/huggingface/hub
 export XDG_CACHE_HOME=/N/scratch/ayshaikh/.cache
@@ -68,7 +68,7 @@ mkdir -p "$WANDB_DIR"
 # ─── Setup vLLM venv (separate from main venv, needs torch 2.6.0) ────────
 # vLLM >= 0.9 has broken MoE kernels (_moe_C topk_softmax bug).
 # Qwen team recommends vLLM >= 0.8.5 for Qwen3-235B-A22B.
-# vLLM 0.8.5 requires torch 2.6.0 — incompatible with our main venv (torch 2.9.0).
+# vLLM 0.8.5 requires torch 2.6.0 - incompatible with our main venv (torch 2.9.0).
 # CRITICAL: transformers 5.x removed all_special_tokens_extended which vLLM 0.8.5
 # depends on. Must pin transformers<5.0.0 to avoid AttributeError crash.
 VLLM_VENV=/N/scratch/ayshaikh/vllm_venv

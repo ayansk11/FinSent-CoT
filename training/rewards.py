@@ -2,10 +2,10 @@
 Improved reward functions for GRPO training.
 
 4 equal-weight rewards (1.0 each):
-1. Sentiment correctness — Is the classification right?
-2. Format compliance — Are <reasoning> and <answer> tags present and well-formed?
-3. Reasoning quality — Is the reasoning detailed, relevant, and analytical?
-4. Consistency — Does the reasoning logically support the answer?
+1. Sentiment correctness - Is the classification right?
+2. Format compliance - Are <reasoning> and <answer> tags present and well-formed?
+3. Reasoning quality - Is the reasoning detailed, relevant, and analytical?
+4. Consistency - Does the reasoning logically support the answer?
 """
 
 import re

@@ -1,9 +1,9 @@
 """
-FinSenti — Qwen3-4B: SFT -> GRPO -> Export -> Upload
+FinSent - Qwen3-4B: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
 Uses Unsloth for all phases (SFT, GRPO, Export).
-Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
+Dataset: Ayansk11/FinSent-Dataset (local validated splits)
 
 Usage:
     python qwen3_4b.py --phase all          # Full pipeline
@@ -12,7 +12,7 @@ Usage:
     python qwen3_4b.py --phase export       # Export only (requires GRPO checkpoint)
 """
 
-import a100_compat  # noqa: F401 — must be before unsloth (patches addmm_ for A100)
+import a100_compat  # noqa: F401 - must be before unsloth (patches addmm_ for A100)
 import argparse
 import json
 import os
@@ -79,12 +79,12 @@ GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
-HF_FULL = "Ayansk11/FinSenti-Qwen3-4B"
-HF_GGUF = "Ayansk11/FinSenti-Qwen3-4B-GGUF"
+HF_FULL = "Ayansk11/FinSent-Qwen3-4B"
+HF_GGUF = "Ayansk11/FinSent-Qwen3-4B-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
-    4: "Ayansk11/FinSenti-Qwen3-4B-MLX-4bit",
-    8: "Ayansk11/FinSenti-Qwen3-4B-MLX-8bit",
+    4: "Ayansk11/FinSent-Qwen3-4B-MLX-4bit",
+    8: "Ayansk11/FinSent-Qwen3-4B-MLX-8bit",
 }
 
 # Paths
@@ -105,7 +105,7 @@ SYSTEM_PROMPT = (
 # Ollama Modelfile template (Qwen3 chat format)
 MODELFILE_TEMPLATE = """FROM ./{gguf_filename}
 
-# Qwen3 chat template — prefill past <think> to skip empty thinking block
+# Qwen3 chat template - prefill past <think> to skip empty thinking block
 TEMPLATE \\"\\"\\"<|im_start|>system
 You are a financial sentiment analyst. Analyze the given financial text and provide:
 1. Your reasoning in <reasoning> tags
@@ -146,7 +146,7 @@ PARAMETER num_predict 512
 
 def run_sft():
     """SFT warm-up training using Unsloth."""
-    import unsloth  # noqa: F401 — MUST be first, patches transformers/trl
+    import unsloth  # noqa: F401 - MUST be first, patches transformers/trl
     import torch
     import wandb
     from datasets import Dataset
@@ -154,7 +154,7 @@ def run_sft():
     from trl import SFTConfig, SFTTrainer
 
     print("=" * 70)
-    print(f"FinSenti SFT — {SHORT_NAME}")
+    print(f"FinSent SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
     print(f"  Backend:     Unsloth QLoRA")
@@ -166,7 +166,7 @@ def run_sft():
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -203,7 +203,7 @@ def run_sft():
         use_gradient_checkpointing="unsloth",
     )
 
-    # ─── Load dataset (Ayansk11/FinSenti-Dataset, local validated split) ─
+    # ─── Load dataset (Ayansk11/FinSent-Dataset, local validated split) ─
     data_path = Path(DATASET_DIR) / "sft_train.jsonl"
     print(f"Loading SFT dataset from {data_path}...")
     samples = []
@@ -283,7 +283,7 @@ def run_sft():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _patch_masked_batch_mean():
-    """Fix Unsloth's masked_batch_mean tensor mismatch (closure — must patch source file)."""
+    """Fix Unsloth's masked_batch_mean tensor mismatch (closure - must patch source file)."""
     import importlib
     import importlib.util
     import glob as _glob
@@ -302,18 +302,18 @@ def _patch_masked_batch_mean():
             cache_mod = mod
             break
     if cache_mod is None:
-        print("  [Patch] Unsloth GRPOTrainer cache not found — skipping")
+        print("  [Patch] Unsloth GRPOTrainer cache not found - skipping")
         return None
     filepath = cache_mod.__file__
     try:
         with open(filepath, 'r') as f:
             content = f.read()
     except FileNotFoundError:
-        print(f'  [Patch] Cache file deleted by another job — skipping: {filepath}')
+        print(f'  [Patch] Cache file deleted by another job - skipping: {filepath}')
         return None
     count = content.count(OLD)
     if count == 0:
-        print(f"  [Patch] {filepath} — already patched")
+        print(f"  [Patch] {filepath} - already patched")
         return None
     with open(filepath, 'w') as f:
         f.write(content.replace(OLD, NEW))
@@ -321,7 +321,7 @@ def _patch_masked_batch_mean():
     if os.path.isdir(pycache):
         for pyc in _glob.glob(os.path.join(pycache, '*.pyc')):
             os.remove(pyc)
-    # Robust manual reload — importlib.reload fails for dynamically-loaded modules
+    # Robust manual reload - importlib.reload fails for dynamically-loaded modules
     mod_name = cache_mod.__name__
     sys.modules.pop(mod_name, None)
     loader = importlib.machinery.SourceFileLoader(mod_name, filepath)
@@ -336,7 +336,7 @@ def _patch_masked_batch_mean():
 def run_grpo():
     """GRPO training using Unsloth's patched GRPOTrainer."""
     # CRITICAL ORDER: import unsloth BEFORE trl so GRPOTrainer gets patched
-    import unsloth  # noqa: F401 — patches trl classes in-place
+    import unsloth  # noqa: F401 - patches trl classes in-place
     import torch
     import wandb
     from datasets import Dataset
@@ -358,7 +358,7 @@ def run_grpo():
         GRPOTrainer = _patched
 
     print("=" * 70)
-    print(f"FinSenti GRPO — {SHORT_NAME}")
+    print(f"FinSent GRPO - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Backend:     Unsloth GRPOTrainer")
     print(f"  SFT ckpt:    {SFT_OUTPUT}")
@@ -371,7 +371,7 @@ def run_grpo():
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -407,7 +407,7 @@ def run_grpo():
         load_in_4bit=True,
     )
 
-    # ─── Load GRPO dataset (Ayansk11/FinSenti-Dataset) ────────────────
+    # ─── Load GRPO dataset (Ayansk11/FinSent-Dataset) ────────────────
     data_path = Path(DATASET_DIR) / "grpo_train.jsonl"
     print(f"Loading GRPO dataset from {data_path}...")
     samples = []
@@ -485,7 +485,7 @@ def run_grpo():
     # ─── Report ───────────────────────────────────────────────────────────
     steps = trainer.state.global_step
     print(f"\n{'='*70}")
-    print(f"GRPO REPORT — {SHORT_NAME}")
+    print(f"GRPO REPORT - {SHORT_NAME}")
     print(f"{'='*70}")
     print(f"  Steps completed: {steps}/{GRPO_MAX_STEPS}")
     print(f"  Steps saved:     {GRPO_MAX_STEPS - steps}")
@@ -531,10 +531,10 @@ def run_export(upload: bool = False):
 
     output_dir = Path(EXPORT_OUTPUT)
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_name = f"FinSenti-{SHORT_NAME}"
+    model_name = f"FinSent-{SHORT_NAME}"
 
     print("=" * 70)
-    print(f"FinSenti Export — {SHORT_NAME}")
+    print(f"FinSent Export - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Source:        {GRPO_OUTPUT}")
     print(f"  Quantizations: {', '.join(QUANTIZATIONS)}")
@@ -545,7 +545,7 @@ def run_export(upload: bool = False):
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSenti",
+        project="FinSent",
         name=f"export-{SHORT_NAME}",
         tags=["export", "gguf", "quantization", MODEL_KEY],
         config={
@@ -624,7 +624,7 @@ def run_export(upload: bool = False):
             mlx_size = sum(os.path.getsize(str(f)) for f in mlx_dir.rglob("*") if f.is_file())
             print(f"    -> {mlx_size / (1024**3):.2f} GB ({elapsed:.0f}s)")
     except ImportError:
-        print("\n  [SKIP] mlx-lm not installed — MLX export skipped (run on Apple Silicon)")
+        print("\n  [SKIP] mlx-lm not installed - MLX export skipped (run on Apple Silicon)")
     except Exception as e:
         print(f"\n  [WARN] MLX conversion failed: {e}")
 
@@ -676,7 +676,7 @@ def run_export(upload: bool = False):
 
     # ─── Summary ──────────────────────────────────────────────────────────
     print(f"\n{'='*70}")
-    print(f"EXPORT COMPLETE — {SHORT_NAME}")
+    print(f"EXPORT COMPLETE - {SHORT_NAME}")
     print(f"{'='*70}")
     for e in exports:
         rec = " (recommended)" if e["quant"] == "Q5_K_M" else ""
@@ -692,7 +692,7 @@ def run_export(upload: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"FinSenti {SHORT_NAME}: SFT -> GRPO -> Export"
+        description=f"FinSent {SHORT_NAME}: SFT -> GRPO -> Export"
     )
     parser.add_argument(
         "--phase",
@@ -710,7 +710,7 @@ def main():
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
 
     print(f"\n{'#'*70}")
-    print(f"# FinSenti Pipeline — {SHORT_NAME}")
+    print(f"# FinSent Pipeline - {SHORT_NAME}")
     print(f"# Phases: {' -> '.join(phases)}")
     print(f"{'#'*70}\n")
 

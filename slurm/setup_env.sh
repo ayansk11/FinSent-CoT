@@ -5,14 +5,14 @@
 # Run this ONCE on a GPU node BEFORE submitting training jobs.
 # It creates/updates the venv with all required dependencies.
 #
-# Target: Big Red 200 — A100 GPUs (gpu partition)
+# Target: Big Red 200 - A100 GPUs (gpu partition)
 #
 # Usage (interactive GPU session):
 #   srun --account=r01510 --partition=gpu \
 #        --gpus-per-node=1 --mem=32G --time=01:00:00 --pty bash
 #   bash slurm/setup_env.sh
 #
-# Usage (SLURM batch — if interactive isn't available):
+# Usage (SLURM batch - if interactive isn't available):
 #   sbatch slurm/setup_env.sh
 # ============================================================
 #SBATCH --job-name=finsent-setup
@@ -67,7 +67,7 @@ echo ""
 # ─── Upgrade pip first ───────────────────────────────────────────────────
 python -m pip install --upgrade pip setuptools wheel
 
-# ─── Install PyTorch (CUDA 12.6 compatible — cu124 wheels work with 12.6)
+# ─── Install PyTorch (CUDA 12.6 compatible - cu124 wheels work with 12.6)
 echo ""
 echo "=== Installing PyTorch ==="
 python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124

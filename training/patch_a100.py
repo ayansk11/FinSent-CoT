@@ -45,7 +45,7 @@ def patch_matmul_lora():
     """
     fpath = _find_package_file("unsloth", "kernels/utils.py")
     if fpath is None:
-        print("[patch_a100] unsloth not installed — skipping matmul_lora")
+        print("[patch_a100] unsloth not installed - skipping matmul_lora")
         return False
 
     with open(fpath, "r") as f:
@@ -53,7 +53,7 @@ def patch_matmul_lora():
 
     patched_marker = "out.addmm_(XA.to(_dt), B.to(_dt)"
     if patched_marker in content:
-        print("[patch_a100] matmul_lora — already patched")
+        print("[patch_a100] matmul_lora - already patched")
         return True
 
     # Match with flexible whitespace
@@ -88,7 +88,7 @@ def patch_compute_3d_position_ids():
         from transformers.models.qwen3_5 import modeling_qwen3_5 as _mod
         fpath = _mod.__file__
     except ImportError:
-        print("[patch_a100] transformers qwen3_5 not available — skipping")
+        print("[patch_a100] transformers qwen3_5 not available - skipping")
         return False
 
     with open(fpath, "r") as f:
@@ -96,7 +96,7 @@ def patch_compute_3d_position_ids():
 
     patched_marker = "if delta.numel() > 0 else position_ids"
     if patched_marker in content:
-        print("[patch_a100] compute_3d_position_ids — already patched")
+        print("[patch_a100] compute_3d_position_ids - already patched")
         return True
 
     old = "position_ids = position_ids + delta.to(device=position_ids.device)"
@@ -139,7 +139,7 @@ def patch_fast_lora_backward():
     """
     fpath = _find_package_file("unsloth", "kernels/fast_lora.py")
     if fpath is None:
-        print("[patch_a100] unsloth.kernels.fast_lora not found — skipping")
+        print("[patch_a100] unsloth.kernels.fast_lora not found - skipping")
         return False
 
     with open(fpath, "r") as f:
@@ -158,11 +158,11 @@ def patch_fast_lora_backward():
     # Check if already patched (original inplace pattern no longer present)
     inplace_pattern = r"out\s*=\s*\w+\s+if\s+ctx\.inplace\s+else\s+None"
     if not re.search(inplace_pattern, content):
-        print("[patch_a100] fast_lora backward — already patched (no inplace pattern found)")
+        print("[patch_a100] fast_lora backward - already patched (no inplace pattern found)")
         return True
 
     # Replace: out = X if ctx.inplace else None  →  out = None
-    # No inline comment — the pattern appears inside function calls like
+    # No inline comment - the pattern appears inside function calls like
     # torch.matmul(..., out = X if ctx.inplace else None) and a # comment
     # would swallow the closing paren.
     new_content, n = re.subn(inplace_pattern, "out = None", content)
@@ -179,8 +179,8 @@ def patch_fast_lora_backward():
 
 
 def patch_llama_cpp_install():
-    """No longer needed — GGUF export now uses llama.cpp directly via subprocess."""
-    print("[patch_a100] install_llama_cpp — skipped (GGUF export uses llama.cpp directly)")
+    """No longer needed - GGUF export now uses llama.cpp directly via subprocess."""
+    print("[patch_a100] install_llama_cpp - skipped (GGUF export uses llama.cpp directly)")
     return True
 
 
@@ -190,15 +190,15 @@ def main():
     print("=" * 50)
 
     results = []
-    # fast_lora_backward MUST run first — it repairs corrupted fast_lora.py
+    # fast_lora_backward MUST run first - it repairs corrupted fast_lora.py
     # which would block all subsequent unsloth imports via SyntaxError
     results.append(("fast_lora_backward", patch_fast_lora_backward()))
     results.append(("matmul_lora", patch_matmul_lora()))
     results.append(("compute_3d_position_ids", patch_compute_3d_position_ids()))
     results.append(("install_llama_cpp", patch_llama_cpp_install()))
 
-    # install_llama_cpp is optional — SLURM scripts build llama.cpp separately
-    # All patches are optional — Unsloth patches fail harmlessly for MobileLLM (PEFT+BnB)
+    # install_llama_cpp is optional - SLURM scripts build llama.cpp separately
+    # All patches are optional - Unsloth patches fail harmlessly for MobileLLM (PEFT+BnB)
     optional = {"install_llama_cpp", "fast_lora_backward", "matmul_lora", "compute_3d_position_ids"}
 
     print("-" * 50)

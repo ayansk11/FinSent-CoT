@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit FinSenti training jobs (SFT -> GRPO -> Export per model)
+# Submit FinSent training jobs (SFT -> GRPO -> Export per model)
 #
 # Usage:
 #   bash slurm/run_all.sh              # Submit all 6 original models
@@ -16,7 +16,7 @@ cd /N/scratch/ayshaikh/FinSent-CoT
 mkdir -p logs
 
 echo "============================================"
-echo "FinSenti — Submitting Training Jobs"
+echo "FinSent - Submitting Training Jobs"
 echo "============================================"
 echo ""
 
@@ -65,7 +65,7 @@ fi
 
 if [ "$MODE" = "--extra" ] || [ "$MODE" = "--all" ]; then
     echo "Extra models (Llama 3.2, SmolLM, Tiny-LLM):"
-    submit slurm/tiny_llm_10m.sh    "Tiny-LLM-10M   (8h, PEFT — scaling lower bound)"
+    submit slurm/tiny_llm_10m.sh    "Tiny-LLM-10M   (8h, PEFT - scaling lower bound)"
     submit slurm/llama_3_2_1b.sh    "Llama-3.2-1B   (12h)"
     submit slurm/smollm_1_7b.sh     "SmolLM-1.7B    (14h)"
     echo ""

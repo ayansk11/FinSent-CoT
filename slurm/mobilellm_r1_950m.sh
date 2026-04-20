@@ -13,13 +13,13 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSenti — MobileLLM-R1-950M full pipeline (SFT -> GRPO -> Export)
+# FinSent - MobileLLM-R1-950M full pipeline (SFT -> GRPO -> Export)
 # Uses PEFT + bitsandbytes (no Unsloth)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
 
-echo "=== Job $SLURM_JOB_ID — MobileLLM-R1-950M ==="
+echo "=== Job $SLURM_JOB_ID - MobileLLM-R1-950M ==="
 echo "Node: $SLURM_NODELIST | GPUs: $SLURM_GPUS_ON_NODE | Start: $(date)"
 
 # Stagger start to avoid HF Hub rate limiting when multiple jobs launch together
@@ -46,7 +46,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSenti
+export WANDB_PROJECT=FinSent
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 
