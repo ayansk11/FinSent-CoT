@@ -1,5 +1,5 @@
 """
-Generate and upload detailed model cards for every FinSent repo on the Hub.
+Generate and upload detailed model cards for every FinSenti repo on the Hub.
 
 What this does
 --------------
@@ -44,8 +44,8 @@ MODELS = [
         "params_b": 0.6,
         "base_model": "unsloth/Qwen3-0.6B",
         "upstream_model": "Qwen/Qwen3-0.6B",
-        "full_repo": "Ayansk11/FinSent-Qwen3-0.6B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3-0.6B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3-0.6B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3-0.6B-GGUF",
         "size_bf16_gb": 1.2,
         "gguf_sizes": {"Q4_K_M": 0.37, "Q5_K_M": 0.41, "Q8_0": 0.60},
         "sft_hours": 0.32,
@@ -70,8 +70,8 @@ MODELS = [
         "params_b": 1.7,
         "base_model": "unsloth/Qwen3-1.7B",
         "upstream_model": "Qwen/Qwen3-1.7B",
-        "full_repo": "Ayansk11/FinSent-Qwen3-1.7B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3-1.7B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3-1.7B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3-1.7B-GGUF",
         "size_bf16_gb": 3.4,
         "gguf_sizes": {"Q4_K_M": 1.10, "Q5_K_M": 1.26, "Q8_0": 1.83},
         "sft_hours": 0.83,
@@ -96,8 +96,8 @@ MODELS = [
         "params_b": 4.0,
         "base_model": "unsloth/Qwen3-4B",
         "upstream_model": "Qwen/Qwen3-4B",
-        "full_repo": "Ayansk11/FinSent-Qwen3-4B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3-4B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3-4B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3-4B-GGUF",
         "size_bf16_gb": 8.0,
         "gguf_sizes": {"Q4_K_M": 2.40, "Q5_K_M": 2.78, "Q8_0": 4.10},
         "sft_hours": 1.5,
@@ -122,8 +122,8 @@ MODELS = [
         "params_b": 8.0,
         "base_model": "unsloth/Qwen3-8B",
         "upstream_model": "Qwen/Qwen3-8B",
-        "full_repo": "Ayansk11/FinSent-Qwen3-8B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3-8B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3-8B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3-8B-GGUF",
         "size_bf16_gb": 16.0,
         "gguf_sizes": {"Q4_K_M": 4.70, "Q5_K_M": 5.40, "Q8_0": 8.20},
         "sft_hours": 2.0,
@@ -148,8 +148,8 @@ MODELS = [
         "params_b": 0.8,
         "base_model": "unsloth/Qwen3.5-0.8B",
         "upstream_model": "Qwen/Qwen3.5-0.8B",
-        "full_repo": "Ayansk11/FinSent-Qwen3.5-0.8B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3.5-0.8B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3.5-0.8B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-0.8B-GGUF",
         "size_bf16_gb": 1.6,
         "gguf_sizes": {"Q4_K_M": 0.50, "Q5_K_M": 0.57, "Q8_0": 0.83},
         "sft_hours": 1.36,
@@ -174,8 +174,8 @@ MODELS = [
         "params_b": 2.0,
         "base_model": "unsloth/Qwen3.5-2B",
         "upstream_model": "Qwen/Qwen3.5-2B",
-        "full_repo": "Ayansk11/FinSent-Qwen3.5-2B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3.5-2B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3.5-2B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-2B-GGUF",
         "size_bf16_gb": 4.0,
         "gguf_sizes": {"Q4_K_M": 1.20, "Q5_K_M": 1.40, "Q8_0": 2.10},
         "sft_hours": 3.0,
@@ -200,8 +200,8 @@ MODELS = [
         "params_b": 4.0,
         "base_model": "unsloth/Qwen3.5-4B",
         "upstream_model": "Qwen/Qwen3.5-4B",
-        "full_repo": "Ayansk11/FinSent-Qwen3.5-4B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3.5-4B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3.5-4B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-4B-GGUF",
         "size_bf16_gb": 8.0,
         "gguf_sizes": {"Q4_K_M": 2.40, "Q5_K_M": 2.78, "Q8_0": 4.10},
         "sft_hours": 5.0,
@@ -226,8 +226,8 @@ MODELS = [
         "params_b": 9.0,
         "base_model": "unsloth/Qwen3.5-9B",
         "upstream_model": "Qwen/Qwen3.5-9B",
-        "full_repo": "Ayansk11/FinSent-Qwen3.5-9B",
-        "gguf_repo": "Ayansk11/FinSent-Qwen3.5-9B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-Qwen3.5-9B",
+        "gguf_repo": "Ayansk11/FinSenti-Qwen3.5-9B-GGUF",
         "size_bf16_gb": 18.0,
         "gguf_sizes": {"Q4_K_M": 5.50, "Q5_K_M": 6.30, "Q8_0": 9.50},
         "sft_hours": 10.0,
@@ -240,7 +240,7 @@ MODELS = [
         "lora_alpha": 64,
         "trainer": "Unsloth + TRL",
         "blurb": (
-            "the largest model in the FinSent family. Reasoning chains "
+            "the largest model in the FinSenti family. Reasoning chains "
             "are the most thorough of the bunch, but you'll need real GPU "
             "memory (~20 GB bf16) to run it without quantization"
         ),
@@ -252,8 +252,8 @@ MODELS = [
         "params_b": 1.5,
         "base_model": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B",
         "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        "full_repo": "Ayansk11/FinSent-DeepSeek-R1-1.5B",
-        "gguf_repo": "Ayansk11/FinSent-DeepSeek-R1-1.5B-GGUF",
+        "full_repo": "Ayansk11/FinSenti-DeepSeek-R1-1.5B",
+        "gguf_repo": "Ayansk11/FinSenti-DeepSeek-R1-1.5B-GGUF",
         "size_bf16_gb": 3.0,
         "gguf_sizes": {"Q4_K_M": 1.00, "Q5_K_M": 1.16, "Q8_0": 1.70},
         "sft_hours": 0.6,
@@ -275,7 +275,7 @@ MODELS = [
 
 # Cluster-wide constants used in every training script.
 GRPO_BUDGET_STEPS = 3000  # all training/*.py have GRPO_MAX_STEPS = 3000
-DATASET_REPO = "Ayansk11/FinSent-Dataset"
+DATASET_REPO = "Ayansk11/FinSenti-Dataset"
 # Train slice per stage (sft_train.jsonl / grpo_train.jsonl have ~15.2K rows
 # each on disk). Total dataset across train+val+test for both formats is 50.8K.
 TRAIN_PER_STAGE = "15.2K"
@@ -294,7 +294,7 @@ language:
   - en
 base_model: {base_model}
 datasets:
-  - Ayansk11/FinSent-Dataset
+  - Ayansk11/FinSenti-Dataset
 pipeline_tag: text-generation
 library_name: transformers
 tags:
@@ -306,7 +306,7 @@ tags:
   - grpo
   - sft
   - lora
-  - finsent
+  - finsenti
 ---
 """
 
@@ -316,7 +316,7 @@ language:
   - en
 base_model: {full_repo}
 datasets:
-  - Ayansk11/FinSent-Dataset
+  - Ayansk11/FinSenti-Dataset
 pipeline_tag: text-generation
 library_name: gguf
 tags:
@@ -328,7 +328,7 @@ tags:
   - llama-cpp
   - ollama
   - quantized
-  - finsent
+  - finsenti
 ---
 """
 
@@ -354,7 +354,7 @@ EXAMPLE_RESPONSE = (
 
 
 def _related_models_section(current_key: str) -> str:
-    """Generate a short list of other FinSent models, grouped by family."""
+    """Generate a short list of other FinSenti models, grouped by family."""
     by_family: dict[str, list[dict]] = {}
     for m in MODELS:
         if m["key"] == current_key:
@@ -406,7 +406,7 @@ def _hardware_recommendation(m: dict) -> str:
 
 def _gguf_filename(m: dict, quant: str) -> str:
     """Match the filename pattern emitted by the per-model training scripts."""
-    return f"FinSent-{m['name']}.{quant}.gguf"
+    return f"FinSenti-{m['name']}.{quant}.gguf"
 
 
 # Anything whose Q4_K_M file is <= this size goes on a phone comfortably.
@@ -500,15 +500,15 @@ def make_base_card(m: dict) -> str:
     related = _related_models_section(m["key"])
     hardware = _hardware_recommendation(m)
 
-    body = f"""# FinSent-{m['name']}
+    body = f"""# FinSenti-{m['name']}
 
-FinSent-{m['name']} is a {m['params_b']:.1f}B-parameter model fine-tuned to
+FinSenti-{m['name']} is a {m['params_b']:.1f}B-parameter model fine-tuned to
 read short financial text (headlines, earnings snippets, market commentary)
 and explain its read of them before settling on positive, negative, or
 neutral. It's {m['blurb']}.
 
-The model is part of the [FinSent
-collection](https://huggingface.co/collections/Ayansk11/finsent), a
+The model is part of the [FinSenti
+collection](https://huggingface.co/collections/Ayansk11/finsenti), a
 scaling study of small models trained on the same data with the same recipe.
 
 ## What it's good at
@@ -525,9 +525,9 @@ but the labels get noisier.
 
 ## How it was trained
 
-Two-stage recipe, same across the whole FinSent family:
+Two-stage recipe, same across the whole FinSenti family:
 
-1. **SFT** on the SFT train slice from the [FinSent
+1. **SFT** on the SFT train slice from the [FinSenti
    dataset]({"https://huggingface.co/datasets/" + DATASET_REPO})
    (~{TRAIN_PER_STAGE} balanced training samples, drawn from a
    {DATASET_TOTAL}-sample pool with held-out val/test splits, chain-of-thought
@@ -655,7 +655,7 @@ A few things this model isn't built for:
 | Hardware | NVIDIA A100 80GB (Indiana University BigRed200 cluster) |
 | Frameworks | {m['trainer']} |
 
-## Related FinSent models
+## Related FinSenti models
 
 Other sizes and bases trained with the same recipe:
 
@@ -664,7 +664,7 @@ Other sizes and bases trained with the same recipe:
 There's a GGUF build of this same model at
 [{m['gguf_repo']}](https://huggingface.co/{m['gguf_repo']}) for Ollama and
 llama.cpp, and the dataset itself is at
-[Ayansk11/FinSent-Dataset](https://huggingface.co/datasets/Ayansk11/FinSent-Dataset).
+[Ayansk11/FinSenti-Dataset](https://huggingface.co/datasets/Ayansk11/FinSenti-Dataset).
 
 If you're picking a size, a rough guide:
 
@@ -680,11 +680,11 @@ If you're picking a size, a rough guide:
 If you use this model in research, please cite:
 
 ```bibtex
-@misc{{shaikh2026finsent,
-  title  = {{FinSent: Small Language Models for Financial Sentiment with Chain-of-Thought Reasoning}},
+@misc{{shaikh2026finsenti,
+  title  = {{FinSenti: Small Language Models for Financial Sentiment with Chain-of-Thought Reasoning}},
   author = {{Shaikh, Ayan}},
   year   = {{2026}},
-  url    = {{https://huggingface.co/collections/Ayansk11/finsent}},
+  url    = {{https://huggingface.co/collections/Ayansk11/finsenti}},
   note   = {{Indiana University}}
 }}
 ```
@@ -715,9 +715,9 @@ def make_gguf_card(m: dict) -> str:
 
     mobile_block = "\n" + _mobile_section(m) if _is_mobile_friendly(m) else ""
 
-    body = f"""# FinSent-{m['name']} - GGUF
+    body = f"""# FinSenti-{m['name']} - GGUF
 
-GGUF builds of [FinSent-{m['name']}](https://huggingface.co/{m['full_repo']})
+GGUF builds of [FinSenti-{m['name']}](https://huggingface.co/{m['full_repo']})
 for use with [Ollama](https://ollama.com), [llama.cpp](https://github.com/ggerganov/llama.cpp),
 LM Studio, KoboldCpp, and other GGUF-compatible runtimes.
 
@@ -749,16 +749,16 @@ huggingface-cli download {m['gguf_repo']} {f_q4} --local-dir .
 ## Quick start (Ollama)
 
 This repo ships a `Modelfile` for each quant. To register the Q4_K_M build
-under the name `finsent-{name_safe}`:
+under the name `finsenti-{name_safe}`:
 
 ```bash
 huggingface-cli download {m['gguf_repo']} \\
-  {f_q4} Modelfile.Q4_K_M --local-dir ./finsent-tmp
-cd finsent-tmp
-ollama create finsent-{name_safe} -f Modelfile.Q4_K_M
+  {f_q4} Modelfile.Q4_K_M --local-dir ./finsenti-tmp
+cd finsenti-tmp
+ollama create finsenti-{name_safe} -f Modelfile.Q4_K_M
 
 # Then chat with it
-ollama run finsent-{name_safe} "Apple beats Q4 estimates as iPhone sales jump 12% year over year."
+ollama run finsenti-{name_safe} "Apple beats Q4 estimates as iPhone sales jump 12% year over year."
 ```
 
 You should see output like:
@@ -837,7 +837,7 @@ Quantization adds a small extra error on top of the base model. For
 Q4_K_M on a model this size you'll see occasional disagreement with the
 bf16 model on borderline headlines, usually neutral-vs-positive flips.
 
-## Related FinSent models
+## Related FinSenti models
 
 Other sizes and bases trained with the same recipe:
 
@@ -846,16 +846,16 @@ Other sizes and bases trained with the same recipe:
 The full-precision SafeTensors version of this model is at
 [{m['full_repo']}](https://huggingface.co/{m['full_repo']}), and the
 training data is at
-[Ayansk11/FinSent-Dataset](https://huggingface.co/datasets/Ayansk11/FinSent-Dataset).
+[Ayansk11/FinSenti-Dataset](https://huggingface.co/datasets/Ayansk11/FinSenti-Dataset).
 
 ## Citation
 
 ```bibtex
-@misc{{shaikh2026finsent,
-  title  = {{FinSent: Small Language Models for Financial Sentiment with Chain-of-Thought Reasoning}},
+@misc{{shaikh2026finsenti,
+  title  = {{FinSenti: Small Language Models for Financial Sentiment with Chain-of-Thought Reasoning}},
   author = {{Shaikh, Ayan}},
   year   = {{2026}},
-  url    = {{https://huggingface.co/collections/Ayansk11/finsent}},
+  url    = {{https://huggingface.co/collections/Ayansk11/finsenti}},
   note   = {{Indiana University}}
 }}
 ```
@@ -880,7 +880,7 @@ def _upload_card(api: HfApi, repo_id: str, content: str) -> str:
     except HfHubHTTPError as exc:
         return f"error: {exc}"
 
-    tmp = Path("/tmp") / f"finsent-card-{repo_id.replace('/', '_')}.md"
+    tmp = Path("/tmp") / f"finsenti-card-{repo_id.replace('/', '_')}.md"
     tmp.write_text(content, encoding="utf-8")
     try:
         api.upload_file(
@@ -915,7 +915,7 @@ def _check_no_em_dash(text: str, label: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate and upload FinSent model cards"
+        description="Generate and upload FinSenti model cards"
     )
     parser.add_argument(
         "--model",

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=finsent-gemma4-26b-a4b
+#SBATCH --job-name=finsenti-gemma4-26b-a4b
 #SBATCH --account=r01510
 #SBATCH --partition=hopper
 #SBATCH --qos=hopper
@@ -14,7 +14,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSent - Gemma4-26B-A4B full pipeline (SFT -> GRPO -> Export)
+# FinSenti - Gemma4-26B-A4B full pipeline (SFT -> GRPO -> Export)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
@@ -53,7 +53,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSent
+export WANDB_PROJECT=FinSenti
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 

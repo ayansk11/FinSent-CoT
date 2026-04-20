@@ -15,7 +15,7 @@
 # Usage (SLURM batch - if interactive isn't available):
 #   sbatch slurm/setup_env.sh
 # ============================================================
-#SBATCH --job-name=finsent-setup
+#SBATCH --job-name=finsenti-setup
 #SBATCH --account=r01510
 #SBATCH --partition=gpu
 #SBATCH --nodes=1

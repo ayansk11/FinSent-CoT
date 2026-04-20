@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=finsent-llama-3.2-1b
+#SBATCH --job-name=finsenti-llama-3.2-1b
 #SBATCH --account=r01510
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
@@ -13,7 +13,7 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --exclusive
 
-# FinSent - Llama-3.2-1B full pipeline (SFT -> GRPO -> Export)
+# FinSenti - Llama-3.2-1B full pipeline (SFT -> GRPO -> Export)
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
@@ -47,7 +47,7 @@ mkdir -p logs
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
     source /N/scratch/ayshaikh/.tokens
 fi
-export WANDB_PROJECT=FinSent
+export WANDB_PROJECT=FinSenti
 export WANDB_DIR=/N/scratch/ayshaikh/FinSent-CoT/wandb
 mkdir -p "$WANDB_DIR"
 

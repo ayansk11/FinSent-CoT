@@ -1,9 +1,9 @@
 """
-FinSent - Qwen3-4B: SFT -> GRPO -> Export -> Upload
+FinSenti - Qwen3-4B: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
 Uses Unsloth for all phases (SFT, GRPO, Export).
-Dataset: Ayansk11/FinSent-Dataset (local validated splits)
+Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
 
 Usage:
     python qwen3_4b.py --phase all          # Full pipeline
@@ -79,12 +79,12 @@ GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
-HF_FULL = "Ayansk11/FinSent-Qwen3-4B"
-HF_GGUF = "Ayansk11/FinSent-Qwen3-4B-GGUF"
+HF_FULL = "Ayansk11/FinSenti-Qwen3-4B"
+HF_GGUF = "Ayansk11/FinSenti-Qwen3-4B-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
-    4: "Ayansk11/FinSent-Qwen3-4B-MLX-4bit",
-    8: "Ayansk11/FinSent-Qwen3-4B-MLX-8bit",
+    4: "Ayansk11/FinSenti-Qwen3-4B-MLX-4bit",
+    8: "Ayansk11/FinSenti-Qwen3-4B-MLX-8bit",
 }
 
 # Paths
@@ -154,7 +154,7 @@ def run_sft():
     from trl import SFTConfig, SFTTrainer
 
     print("=" * 70)
-    print(f"FinSent SFT - {SHORT_NAME}")
+    print(f"FinSenti SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
     print(f"  Backend:     Unsloth QLoRA")
@@ -166,7 +166,7 @@ def run_sft():
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSent",
+        project="FinSenti",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -203,7 +203,7 @@ def run_sft():
         use_gradient_checkpointing="unsloth",
     )
 
-    # ─── Load dataset (Ayansk11/FinSent-Dataset, local validated split) ─
+    # ─── Load dataset (Ayansk11/FinSenti-Dataset, local validated split) ─
     data_path = Path(DATASET_DIR) / "sft_train.jsonl"
     print(f"Loading SFT dataset from {data_path}...")
     samples = []
@@ -358,7 +358,7 @@ def run_grpo():
         GRPOTrainer = _patched
 
     print("=" * 70)
-    print(f"FinSent GRPO - {SHORT_NAME}")
+    print(f"FinSenti GRPO - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Backend:     Unsloth GRPOTrainer")
     print(f"  SFT ckpt:    {SFT_OUTPUT}")
@@ -371,7 +371,7 @@ def run_grpo():
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSent",
+        project="FinSenti",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -407,7 +407,7 @@ def run_grpo():
         load_in_4bit=True,
     )
 
-    # ─── Load GRPO dataset (Ayansk11/FinSent-Dataset) ────────────────
+    # ─── Load GRPO dataset (Ayansk11/FinSenti-Dataset) ────────────────
     data_path = Path(DATASET_DIR) / "grpo_train.jsonl"
     print(f"Loading GRPO dataset from {data_path}...")
     samples = []
@@ -531,10 +531,10 @@ def run_export(upload: bool = False):
 
     output_dir = Path(EXPORT_OUTPUT)
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_name = f"FinSent-{SHORT_NAME}"
+    model_name = f"FinSenti-{SHORT_NAME}"
 
     print("=" * 70)
-    print(f"FinSent Export - {SHORT_NAME}")
+    print(f"FinSenti Export - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Source:        {GRPO_OUTPUT}")
     print(f"  Quantizations: {', '.join(QUANTIZATIONS)}")
@@ -545,7 +545,7 @@ def run_export(upload: bool = False):
 
     # ─── W&B ──────────────────────────────────────────────────────────────
     _wandb_init_safe(
-        project="FinSent",
+        project="FinSenti",
         name=f"export-{SHORT_NAME}",
         tags=["export", "gguf", "quantization", MODEL_KEY],
         config={
@@ -683,7 +683,7 @@ def run_export(upload: bool = False):
         print(f"  {e['quant']}: {e['size_gb']} GB{rec}")
     print(f"  HF weights: {merged_dir}")
     print(f"\nTo create Ollama model (using Q5_K_M):")
-    print(f"  cd {output_dir}/Q5_K_M && ollama create finsent-{MODEL_KEY} -f Modelfile")
+    print(f"  cd {output_dir}/Q5_K_M && ollama create finsenti-{MODEL_KEY} -f Modelfile")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -692,7 +692,7 @@ def run_export(upload: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"FinSent {SHORT_NAME}: SFT -> GRPO -> Export"
+        description=f"FinSenti {SHORT_NAME}: SFT -> GRPO -> Export"
     )
     parser.add_argument(
         "--phase",
@@ -710,7 +710,7 @@ def main():
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
 
     print(f"\n{'#'*70}")
-    print(f"# FinSent Pipeline - {SHORT_NAME}")
+    print(f"# FinSenti Pipeline - {SHORT_NAME}")
     print(f"# Phases: {' -> '.join(phases)}")
     print(f"{'#'*70}\n")
 

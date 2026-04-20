@@ -1,9 +1,9 @@
 """
-FinSent - Llama-3.2-1B: SFT -> GRPO -> Export -> Upload
+FinSenti - Llama-3.2-1B: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
 Uses Unsloth for all phases (SFT, GRPO, Export).
-Dataset: Ayansk11/FinSent-Dataset (local validated splits)
+Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
 
 Usage:
     python llama_3_2_1b.py --phase all          # Full pipeline
@@ -79,12 +79,12 @@ GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 
 # HuggingFace repos
-HF_FULL = "Ayansk11/FinSent-Llama-3.2-1B"
-HF_GGUF = "Ayansk11/FinSent-Llama-3.2-1B-GGUF"
+HF_FULL = "Ayansk11/FinSenti-Llama-3.2-1B"
+HF_GGUF = "Ayansk11/FinSenti-Llama-3.2-1B-GGUF"
 QUANTIZATIONS = ["Q4_K_M", "Q5_K_M", "Q8_0"]
 MLX_REPOS = {
-    4: "Ayansk11/FinSent-Llama-3.2-1B-MLX-4bit",
-    8: "Ayansk11/FinSent-Llama-3.2-1B-MLX-8bit",
+    4: "Ayansk11/FinSenti-Llama-3.2-1B-MLX-4bit",
+    8: "Ayansk11/FinSenti-Llama-3.2-1B-MLX-8bit",
 }
 
 # Paths
@@ -151,7 +151,7 @@ def run_sft():
     from trl import SFTConfig, SFTTrainer
 
     print("=" * 70)
-    print(f"FinSent SFT - {SHORT_NAME}")
+    print(f"FinSenti SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
     print(f"  LoRA:        r={SFT_LORA_R}, alpha={SFT_LORA_ALPHA}")
@@ -160,7 +160,7 @@ def run_sft():
     print()
 
     _wandb_init_safe(
-        project="FinSent",
+        project="FinSenti",
         name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
         tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -305,7 +305,7 @@ def run_grpo():
         GRPOTrainer = _patched
 
     print("=" * 70)
-    print(f"FinSent GRPO - {SHORT_NAME}")
+    print(f"FinSenti GRPO - {SHORT_NAME}")
     print("=" * 70)
     print(f"  LoRA:  r={GRPO_LORA_R}, alpha={GRPO_LORA_ALPHA}")
     print(f"  Batch: {GRPO_BATCH_SIZE} x {GRPO_GRAD_ACCUM} = {GRPO_BATCH_SIZE * GRPO_GRAD_ACCUM}")
@@ -313,7 +313,7 @@ def run_grpo():
     print()
 
     _wandb_init_safe(
-        project="FinSent",
+        project="FinSenti",
         name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
         tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY],
         config={
@@ -406,13 +406,13 @@ def run_export(upload: bool = False):
 
     output_dir = Path(EXPORT_OUTPUT)
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_name = f"FinSent-{SHORT_NAME}"
+    model_name = f"FinSenti-{SHORT_NAME}"
 
     print("=" * 70)
-    print(f"FinSent Export - {SHORT_NAME}")
+    print(f"FinSenti Export - {SHORT_NAME}")
     print("=" * 70)
 
-    _wandb_init_safe(project="FinSent", name=f"export-{SHORT_NAME}", tags=["export", "gguf", MODEL_KEY])
+    _wandb_init_safe(project="FinSenti", name=f"export-{SHORT_NAME}", tags=["export", "gguf", MODEL_KEY])
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH,
@@ -505,14 +505,14 @@ def run_export(upload: bool = False):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description=f"FinSent {SHORT_NAME}: SFT -> GRPO -> Export")
+    parser = argparse.ArgumentParser(description=f"FinSenti {SHORT_NAME}: SFT -> GRPO -> Export")
     parser.add_argument("--phase", choices=["sft", "grpo", "export", "all"], default="all")
     parser.add_argument("--upload", action="store_true")
     args = parser.parse_args()
 
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
     print(f"\n{'#'*70}")
-    print(f"# FinSent Pipeline - {SHORT_NAME}")
+    print(f"# FinSenti Pipeline - {SHORT_NAME}")
     print(f"# Phases: {' -> '.join(phases)}")
     print(f"{'#'*70}\n")
 
