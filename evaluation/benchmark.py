@@ -1,29 +1,51 @@
 """
-Comprehensive model evaluation & W&B reporting for FinSent-CoT.
+Comprehensive model evaluation & W&B reporting for FinSenti.
 
-Evaluates the fine-tuned model on the held-out test set and logs
-detailed metrics, confusion matrices, sample outputs, and quality
-analysis to W&B for report generation.
+Evaluates a fine-tuned model (or any HF chat/completion model) on the
+held-out test set or one of the public finance benchmarks, and logs
+detailed metrics to W&B plus an optional JSON result file for downstream
+aggregation.
 
 Usage:
-    # Evaluate via Ollama (local Mac M4)
-    python evaluation/benchmark.py --backend ollama --model financial-sentiment
+    # Evaluate a FinSenti HF model on the FPB benchmark
+    python evaluation/benchmark.py \\
+        --backend transformers --model Ayansk11/FinSenti-Qwen3-0.6B \\
+        --benchmark fpb \\
+        --output-json evaluation/results/qwen3-0.6b/fpb.json
 
-    # Evaluate via vLLM (Big Red 200)
-    python evaluation/benchmark.py --backend vllm --model ./checkpoints/grpo --api-base http://localhost:8000/v1
+    # Evaluate via Ollama (local Mac M4 / cluster post-export)
+    python evaluation/benchmark.py --backend ollama --model finsenti-qwen3-0.6b \\
+        --benchmark finsenti
 
-    # Evaluate with test JSONL file
-    python evaluation/benchmark.py --backend ollama --model finsent-cot --test-file ./validated/raw_test.jsonl
+    # Evaluate via vLLM (OpenAI-compatible server)
+    python evaluation/benchmark.py --backend vllm \\
+        --model ./checkpoints/grpo --api-base http://localhost:8000/v1 \\
+        --benchmark fpb
+
+    # Use the original 10 curated smoke-test cases (no benchmark flag)
+    python evaluation/benchmark.py --backend ollama --model finsenti-qwen3-0.6b
 """
 
 import argparse
 import json
+import os
 import re
+import sys
 import time
 from collections import Counter
 from pathlib import Path
 
 import wandb
+
+# Allow running either as a module (python -m evaluation.benchmark) or
+# as a script (python evaluation/benchmark.py) with rewards / datasets
+# imports working in both cases.
+_THIS_DIR = Path(__file__).resolve().parent
+if str(_THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(_THIS_DIR))
+
+from datasets_loader import load_benchmark, list_benchmarks  # noqa: E402
+from baselines import compute_metrics  # noqa: E402
 
 # ─── Patterns ────────────────────────────────────────────────────────────────
 
@@ -108,19 +130,21 @@ def query_ollama(model: str, text: str) -> str:
     return result.stdout.strip()
 
 
+SYSTEM_PROMPT = (
+    "You are a financial sentiment analyst. Analyze the given financial text "
+    "and provide:\n"
+    "1. Your reasoning in <reasoning> tags\n"
+    "2. Your sentiment classification (positive, negative, or neutral) in "
+    "<answer> tags"
+)
+
+
 def query_vllm(client, model: str, text: str) -> str:
     """Query model via vLLM OpenAI-compatible API."""
     completion = client.chat.completions.create(
         model=model,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a financial sentiment analyst. Analyze the given financial text and provide:\n"
-                    "1. Your reasoning in <reasoning> tags\n"
-                    "2. Your sentiment classification (positive, negative, or neutral) in <answer> tags"
-                ),
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Analyze the following financial text: {text}"},
         ],
         max_tokens=512,
@@ -130,6 +154,78 @@ def query_vllm(client, model: str, text: str) -> str:
     # Strip <think> blocks
     response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
     return response
+
+
+# -----------------------------------------------------------------------------
+# transformers backend: load the HF model directly (no vLLM / Ollama server).
+# Useful for evaluating SafeTensors repos on a GPU node without the cost of
+# starting a separate serving process per model.
+# -----------------------------------------------------------------------------
+
+_TRANSFORMERS_STATE: dict = {}
+
+
+def _load_transformers(model_id: str):
+    """Load an HF causal-LM once and cache for subsequent calls in this run."""
+    if _TRANSFORMERS_STATE.get("loaded_model") == model_id:
+        return (
+            _TRANSFORMERS_STATE["tokenizer"],
+            _TRANSFORMERS_STATE["model"],
+        )
+
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    print(f"Loading transformers model {model_id}...")
+    tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+    _TRANSFORMERS_STATE.update({
+        "loaded_model": model_id,
+        "tokenizer": tok,
+        "model": model,
+    })
+    return tok, model
+
+
+def query_transformers(model_id: str, text: str, max_new_tokens: int = 512) -> str:
+    """Generate a response with a locally loaded HF model."""
+    import torch
+
+    tok, model = _load_transformers(model_id)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Analyze the following financial text: {text}"},
+    ]
+    try:
+        prompt = tok.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+    except Exception:
+        # Model has no chat template - fall back to a plain concat
+        prompt = f"{SYSTEM_PROMPT}\n\nText: {text}\n\nResponse:"
+
+    inputs = tok(prompt, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            temperature=None,
+            top_p=None,
+            pad_token_id=tok.pad_token_id or tok.eos_token_id,
+        )
+    gen = tok.decode(
+        out[0][inputs.input_ids.shape[1]:],
+        skip_special_tokens=True,
+    )
+    # Strip <think> blocks if any model emits them
+    gen = re.sub(r"<think>.*?</think>", "", gen, flags=re.DOTALL).strip()
+    return gen
 
 
 # ─── Evaluation Logic ────────────────────────────────────────────────────────
@@ -175,20 +271,54 @@ def evaluate_response(response: str, expected: str) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark FinSent-CoT model")
-    parser.add_argument("--backend", choices=["ollama", "vllm"], default="ollama")
-    parser.add_argument("--model", default="financial-sentiment",
-                        help="Model name (Ollama) or path (vLLM)")
+    parser = argparse.ArgumentParser(description="Benchmark FinSenti model")
+    parser.add_argument(
+        "--backend",
+        choices=["ollama", "vllm", "transformers"],
+        default="transformers",
+        help="ollama: local CLI. vllm: OpenAI-compatible server. "
+             "transformers: load HF model directly with torch.",
+    )
+    parser.add_argument("--model", default="Ayansk11/FinSenti-Qwen3-0.6B",
+                        help="Model name (Ollama), HF repo / path (vLLM/transformers).")
     parser.add_argument("--api-base", default="http://localhost:8000/v1",
                         help="vLLM API base URL")
+    parser.add_argument(
+        "--benchmark",
+        choices=list_benchmarks(),
+        default=None,
+        help="Run on a public benchmark loader instead of a JSONL test file.",
+    )
     parser.add_argument("--test-file", default=None,
-                        help="Path to test JSONL file (raw format)")
+                        help="Path to test JSONL file (raw format). "
+                             "Ignored if --benchmark is given.")
+    parser.add_argument("--max-samples", type=int, default=None,
+                        help="Truncate the benchmark / test file to this many "
+                             "samples. Useful for smoke tests.")
+    parser.add_argument("--output-json", type=Path, default=None,
+                        help="Write per-sample predictions and aggregate "
+                             "metrics to this JSON file.")
     parser.add_argument("--run-name", default=None,
                         help="W&B run name (auto-generated if not set)")
+    parser.add_argument("--no-wandb", action="store_true",
+                        help="Skip W&B logging entirely (useful for batch runs).")
     args = parser.parse_args()
 
     # Load test cases
-    if args.test_file and Path(args.test_file).exists():
+    if args.benchmark:
+        print(f"Loading benchmark {args.benchmark}...")
+        bench_samples = load_benchmark(args.benchmark, max_samples=args.max_samples)
+        test_cases = [
+            {
+                "text": s["text"],
+                "expected": s["expected"],
+                "category": s["category"],
+                "id": s["id"],
+            }
+            for s in bench_samples
+        ]
+        print(f"Loaded {len(test_cases)} samples from {args.benchmark}")
+    elif args.test_file and Path(args.test_file).exists():
         print(f"Loading test cases from {args.test_file}...")
         test_cases = []
         with open(args.test_file) as f:
@@ -198,25 +328,44 @@ def main():
                     "text": r["text"],
                     "expected": r.get("answer", r.get("label", "")),
                     "category": r.get("source", "test_set"),
+                    "id": r.get("id", f"line-{len(test_cases)}"),
                 })
+        if args.max_samples:
+            test_cases = test_cases[:args.max_samples]
         print(f"Loaded {len(test_cases)} test cases")
     else:
-        test_cases = DEFAULT_TEST_CASES
+        test_cases = [
+            {**tc, "id": f"default-{i}"} for i, tc in enumerate(DEFAULT_TEST_CASES)
+        ]
+        if args.max_samples:
+            test_cases = test_cases[:args.max_samples]
         print(f"Using {len(test_cases)} default test cases")
 
     # ─── Initialize W&B ─────────────────────────────────────────────────────
-    run_name = args.run_name or f"eval-{args.backend}-{args.model.split('/')[-1]}"
-    wandb.init(
-        project="FinSent-CoT",
-        name=run_name,
-        tags=["evaluation", "benchmark", args.backend],
-        config={
-            "phase": "evaluation",
-            "backend": args.backend,
-            "model": args.model,
-            "num_test_cases": len(test_cases),
-        },
+    run_name = (
+        args.run_name
+        or f"eval-{args.backend}-{args.model.split('/')[-1]}"
+        + (f"-{args.benchmark}" if args.benchmark else "")
     )
+    use_wandb = not args.no_wandb
+    if use_wandb:
+        try:
+            wandb.init(
+                project=os.environ.get("WANDB_PROJECT", "FinSenti"),
+                name=run_name,
+                tags=["evaluation", "benchmark", args.backend,
+                      args.benchmark or "smoke"],
+                config={
+                    "phase": "evaluation",
+                    "backend": args.backend,
+                    "model": args.model,
+                    "benchmark": args.benchmark,
+                    "num_test_cases": len(test_cases),
+                },
+            )
+        except Exception as e:
+            print(f"[warn] W&B init failed ({e}); continuing without W&B")
+            use_wandb = False
 
     # Initialize backend
     client = None
@@ -236,13 +385,17 @@ def main():
         try:
             if args.backend == "ollama":
                 response = query_ollama(args.model, tc["text"])
-            else:
+            elif args.backend == "vllm":
                 response = query_vllm(client, args.model, tc["text"])
+            else:
+                response = query_transformers(args.model, tc["text"])
 
             latency = time.time() - start
             eval_result = evaluate_response(response, tc["expected"])
             eval_result["latency"] = latency
             eval_result["category"] = tc.get("category", "unknown")
+            eval_result["id"] = tc.get("id", f"case-{i}")
+            eval_result["text"] = tc["text"]
             results.append(eval_result)
 
             status = "CORRECT" if eval_result["correct"] else "WRONG"
@@ -253,6 +406,8 @@ def main():
         except Exception as e:
             print(f"  ERROR: {e}")
             results.append({
+                "id": tc.get("id", f"case-{i}"),
+                "text": tc["text"],
                 "predicted": "",
                 "expected": tc["expected"],
                 "correct": False,
@@ -292,11 +447,17 @@ def main():
         if r["correct"]:
             label_correct[r["expected"]] += 1
 
+    # sklearn-based F1 + per-class precision/recall (shared with baselines)
+    sklearn_metrics = compute_metrics(results, benchmark=args.benchmark or "smoke")
+
     # ─── Print summary ───────────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("EVALUATION RESULTS")
     print("=" * 70)
     print(f"Accuracy:         {accuracy:.1f}% ({correct}/{total})")
+    if "weighted_f1" in sklearn_metrics:
+        print(f"Weighted F1:      {sklearn_metrics['weighted_f1']*100:.1f}%")
+        print(f"Macro F1:         {sklearn_metrics['macro_f1']*100:.1f}%")
     print(f"Format Compliance: {format_compliance:.1f}% ({has_reasoning}/{total} with <reasoning> tags)")
     print(f"Answer Tags:      {has_answer}/{total}")
     print(f"Avg Reasoning:    {avg_reasoning_words:.0f} words")
@@ -309,11 +470,39 @@ def main():
         pct = c / t * 100 if t > 0 else 0
         print(f"  {label:>8s}: {pct:.1f}% ({c}/{t})")
 
+    # ─── Write JSON output (if requested) ────────────────────────────────────
+    if args.output_json:
+        args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        json_blob = {
+            "model": args.model,
+            "model_kind": "finsenti" if "FinSenti" in args.model else "other",
+            "backend": args.backend,
+            "benchmark": args.benchmark or ("test-file" if args.test_file else "smoke"),
+            "num_samples": total,
+            "aggregate": {
+                **sklearn_metrics,
+                "format_compliance": format_compliance / 100.0,
+                "answer_tag_rate": (has_answer / total) if total else 0.0,
+                "avg_reasoning_words": avg_reasoning_words,
+                "avg_financial_terms": avg_financial_terms,
+                "avg_latency_sec": avg_latency,
+            },
+            "results": results,
+        }
+        with args.output_json.open("w") as f:
+            json.dump(json_blob, f, indent=2)
+        print(f"\nWrote results to {args.output_json}")
+
     # ─── Log everything to W&B ───────────────────────────────────────────────
+    if not use_wandb:
+        print("\n(skipped W&B logging)")
+        return
 
     # 1. Summary metrics
     wandb.summary.update({
         "accuracy": accuracy,
+        "weighted_f1": sklearn_metrics.get("weighted_f1", 0) * 100,
+        "macro_f1": sklearn_metrics.get("macro_f1", 0) * 100,
         "format_compliance": format_compliance,
         "answer_tag_rate": has_answer / total * 100 if total > 0 else 0,
         "avg_reasoning_words": avg_reasoning_words,
