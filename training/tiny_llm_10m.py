@@ -69,15 +69,18 @@ SFT_LORA_R = 32
 SFT_LORA_ALPHA = 64
 SFT_EPOCHS = 3
 
-# GRPO hyperparameters
+# GRPO hyperparameters - tuned down for Tiny-LLM (10M params + 128K vocab).
+# Earlier run (job 6896744) completed SFT in 6 min but GRPO hung with
+# 4 gens * 512 tokens. The huge softmax relative to the tiny model made
+# every generate() call slow; we cap things tighter here.
 GRPO_BATCH_SIZE = 2
 GRPO_GRAD_ACCUM = 4
 GRPO_LR = 5e-5
 GRPO_LORA_R = 16
 GRPO_LORA_ALPHA = 32
-GRPO_NUM_GENERATIONS = 4
-GRPO_MAX_STEPS = 3000
-GRPO_MAX_COMPLETION_LENGTH = 512
+GRPO_NUM_GENERATIONS = 2          # was 4
+GRPO_MAX_STEPS = 800              # was 3000 (Tiny-LLM is a scaling-floor reference, not a SOTA aim)
+GRPO_MAX_COMPLETION_LENGTH = 256  # was 512
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-Tiny-LLM-10M"
@@ -484,11 +487,15 @@ def run_grpo():
         _base.warnings_issued = {}
     model.warnings_issued = _base.warnings_issued
 
+    print(f"  [debug] building GRPOTrainer ({GRPO_NUM_GENERATIONS} gens x "
+          f"{GRPO_MAX_COMPLETION_LENGTH} completion tokens, max {GRPO_MAX_STEPS} steps)")
     trainer = GRPOTrainer(**trainer_kwargs)
+    print(f"  [debug] GRPOTrainer ready; calling trainer.train() ...")
 
     start = time.time()
     trainer.train()
     elapsed = time.time() - start
+    print(f"  [debug] GRPO training finished in {elapsed:.0f}s")
 
     trainer.save_model(GRPO_OUTPUT)
     tokenizer.save_pretrained(GRPO_OUTPUT)

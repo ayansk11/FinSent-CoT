@@ -38,6 +38,28 @@ mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
 module load python/gpu/3.12.5
 module load cudatoolkit/12.6
 
+# Help triton's JIT linker find libcuda.so.1 (the NVIDIA driver stub).
+# Different clusters put it in different places; probe the usual spots.
+# Previous runs failed with "gcc ... -l:libcuda.so.1 ... non-zero exit status"
+# because gcc only searched /usr/lib64 which doesn't have it on this node.
+_LIBCUDA_PATH=$(ldconfig -p 2>/dev/null | awk '/libcuda\.so\.1 /{print $NF; exit}')
+if [ -z "${_LIBCUDA_PATH:-}" ]; then
+    for _p in /usr/lib64/libcuda.so.1 \
+              /usr/lib64/nvidia/libcuda.so.1 \
+              /opt/cray/nvidia/default/lib64/libcuda.so.1 \
+              /usr/lib/x86_64-linux-gnu/libcuda.so.1; do
+        [ -e "$_p" ] && _LIBCUDA_PATH="$_p" && break
+    done
+fi
+if [ -n "${_LIBCUDA_PATH:-}" ]; then
+    _LIBCUDA_DIR=$(dirname "$_LIBCUDA_PATH")
+    export LD_LIBRARY_PATH="$_LIBCUDA_DIR:${LD_LIBRARY_PATH:-}"
+    export TRITON_LIBCUDA_PATH="$_LIBCUDA_DIR"
+    echo "[env] Using libcuda.so.1 at $_LIBCUDA_PATH"
+else
+    echo "[env] WARNING: libcuda.so.1 not found; triton JIT may fail"
+fi
+
 cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
 mkdir -p logs
