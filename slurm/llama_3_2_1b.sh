@@ -40,19 +40,18 @@ module load python/gpu/3.12.5
 module load cudatoolkit/12.6
 
 # Help triton's JIT linker find libcuda.so.1 (the NVIDIA driver stub).
-# Different clusters put it in different places; probe the usual spots.
-# Previous runs failed with "gcc ... -l:libcuda.so.1 ... non-zero exit status"
-# because gcc only searched /usr/lib64 which doesn't have it on this node.
-_LIBCUDA_PATH=$(ldconfig -p 2>/dev/null | awk '/libcuda\.so\.1 /{print $NF; exit}')
-if [ -z "${_LIBCUDA_PATH:-}" ]; then
-    for _p in /usr/lib64/libcuda.so.1 \
-              /usr/lib64/nvidia/libcuda.so.1 \
-              /opt/cray/nvidia/default/lib64/libcuda.so.1 \
-              /usr/lib/x86_64-linux-gnu/libcuda.so.1; do
-        [ -e "$_p" ] && _LIBCUDA_PATH="$_p" && break
-    done
-fi
-if [ -n "${_LIBCUDA_PATH:-}" ]; then
+# srun probe on this cluster confirmed /usr/lib64/libcuda.so.1 exists;
+# we iterate a small set of known locations rather than pipe ldconfig
+# (ldconfig may be absent on the compute-node default PATH and a bad
+# pipe trips `set -o pipefail` -> exit 127, as happened in job 6900038).
+_LIBCUDA_PATH=""
+for _p in /usr/lib64/libcuda.so.1 \
+          /usr/lib64/nvidia/libcuda.so.1 \
+          /opt/cray/nvidia/default/lib64/libcuda.so.1 \
+          /usr/lib/x86_64-linux-gnu/libcuda.so.1; do
+    [ -e "$_p" ] && _LIBCUDA_PATH="$_p" && break
+done
+if [ -n "$_LIBCUDA_PATH" ]; then
     _LIBCUDA_DIR=$(dirname "$_LIBCUDA_PATH")
     export LD_LIBRARY_PATH="$_LIBCUDA_DIR:${LD_LIBRARY_PATH:-}"
     export TRITON_LIBCUDA_PATH="$_LIBCUDA_DIR"

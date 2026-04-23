@@ -6,7 +6,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=0
-#SBATCH --time=36:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/mobilellm_r1_950m_%j.out
 #SBATCH --error=logs/mobilellm_r1_950m_%j.err
 #SBATCH --mail-user=ayshaikh@iu.edu

@@ -494,11 +494,40 @@ def run_grpo():
         _base.warnings_issued = {}
     model.warnings_issued = _base.warnings_issued
 
+    # Disable gradient checkpointing for GRPO. The 950M model with small
+    # batch doesn't need the memory save, and gradient checkpointing +
+    # PEFT + bitsandbytes is a known source of silent hangs in TRL's
+    # rollout loop (job 6896743 hung for 28h after appearing to train
+    # normally for ~8h).
+    if hasattr(model, "gradient_checkpointing_disable"):
+        print("  [debug] disabling gradient checkpointing for GRPO", flush=True)
+        model.gradient_checkpointing_disable()
+
+    # Warm generation probe: if model.generate() deadlocks with PEFT+bnb
+    # we want to know in seconds, not hours.
+    print("  [debug] warm-generate probe (max_new_tokens=16)...", flush=True)
+    _probe_input = tokenizer(
+        "Headline: Apple beats Q4 estimates.\n",
+        return_tensors="pt",
+    ).to(model.device)
+    import torch as _t
+    with _t.no_grad():
+        _probe_out = model.generate(
+            **_probe_input, max_new_tokens=16, do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+    print(f"  [debug] warm-generate OK ({_probe_out.shape[1]} tokens)", flush=True)
+
+    print(f"  [debug] building GRPOTrainer ({GRPO_NUM_GENERATIONS} gens x "
+          f"{GRPO_MAX_COMPLETION_LENGTH} completion tokens, max {GRPO_MAX_STEPS} steps)",
+          flush=True)
     trainer = GRPOTrainer(**trainer_kwargs)
+    print("  [debug] GRPOTrainer ready; calling trainer.train() ...", flush=True)
 
     start = time.time()
     trainer.train()
     elapsed = time.time() - start
+    print(f"  [debug] GRPO training finished in {elapsed:.0f}s", flush=True)
 
     trainer.save_model(GRPO_OUTPUT)
     tokenizer.save_pretrained(GRPO_OUTPUT)
