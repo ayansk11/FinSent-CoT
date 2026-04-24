@@ -61,7 +61,6 @@ else
 fi
 
 cd /N/scratch/ayshaikh/FinSent-CoT
-source venv/bin/activate
 mkdir -p logs
 
 # Auth tokens
@@ -75,8 +74,14 @@ mkdir -p "$WANDB_DIR"
 # Clear stale Unsloth compiled cache (may be from different TRL version)
 rm -rf "$TMPDIR/unsloth_compiled_cache" "./unsloth_compiled_cache"
 
-# Install/repair unsloth + gguf BEFORE any patches that import unsloth
-python -m pip install unsloth gguf -q 2>&1 | tail -3 || true
+# Env sanity check. The user-site install is set up once on the login node;
+# we don't reinstall here because per-job pip install was destabilising the
+# environment (caused exit-127 and import-chain failures in earlier rounds).
+python -c "
+import torch, transformers, trl, peft, unsloth
+print(f'[env] torch={torch.__version__} transformers={transformers.__version__} '
+      f'trl={trl.__version__} peft={peft.__version__} unsloth={unsloth.__version__}')
+" || { echo '[env] sanity check failed - run pip install on login node first'; exit 1; }
 
 # A100 compatibility patches - must run BEFORE patch_unsloth_cache (which
 # imports unsloth). If fast_lora.py is corrupted, this repairs it first.

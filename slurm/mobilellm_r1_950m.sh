@@ -40,7 +40,6 @@ module load python/gpu/3.12.5
 module load cudatoolkit/12.6
 
 cd /N/scratch/ayshaikh/FinSent-CoT
-source venv/bin/activate
 mkdir -p logs
 
 if [ -f /N/scratch/ayshaikh/.tokens ]; then
@@ -65,16 +64,16 @@ if [ ! -f llama.cpp/build/bin/llama-quantize ]; then
     )
 fi
 
-# Install/repair MobileLLM deps. Use trl<0.25 to stay compatible with unsloth 2026.4.6
-# (other Qwen jobs share the same ~/.local install).
-python -m pip install wandb datasets peft bitsandbytes 'trl<0.25' accelerate gguf transformers==5.2.0 -q 2>&1 | tail -3 || true
-
-# Fail fast if the environment is still in the broken state that caused job 6893085
+# Env sanity check. The user-site install is set up once on the login node;
+# we don't reinstall here because per-job pip install was destabilising the
+# environment (caused exit-127 and import-chain failures in earlier rounds).
 python -c "
-import torch, triton, transformers, trl
-print(f'env: torch={torch.__version__} triton={triton.__version__} transformers={transformers.__version__} trl={trl.__version__}')
+import torch, transformers, trl, peft
+print(f'[env] torch={torch.__version__} transformers={transformers.__version__} '
+      f'trl={trl.__version__} peft={peft.__version__}')
 from trl import GRPOConfig, GRPOTrainer
-" || { echo 'Environment sanity check failed. Run the pip install in README before resubmitting.'; exit 1; }
+print('[env] trl GRPO imports OK')
+" || { echo '[env] sanity check failed - run pip install on login node first'; exit 1; }
 
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
