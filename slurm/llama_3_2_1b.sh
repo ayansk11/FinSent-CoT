@@ -60,6 +60,31 @@ else
     echo "[env] WARNING: libcuda.so.1 not found; triton JIT may fail"
 fi
 
+# Triton's JIT compile passes -I<sysconfig include path> to gcc to find Python.h.
+# On some compute nodes the cluster's Python install reports a non-existent
+# /geode2/.../Python-3.12.5/Include (capital I, source-tree layout) which is
+# why earlier llama/smollm jobs failed with gcc returning exit 1 even though
+# libcuda was correctly located.
+# CPATH and C_INCLUDE_PATH act as additional -I flags for gcc, so even when
+# triton passes a bad path, gcc still finds Python.h via these.
+# See https://github.com/triton-lang/triton/issues/6558
+PYINCLUDE="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["include"])' 2>/dev/null)"
+if [ -d "${PYINCLUDE:-}" ]; then
+    export CPATH="$PYINCLUDE:${CPATH:-}"
+    export C_INCLUDE_PATH="$PYINCLUDE:${C_INCLUDE_PATH:-}"
+    echo "[env] CPATH includes $PYINCLUDE"
+else
+    for cand in /N/soft/sles15sp6/deeplearning/gpu/Python-3.12.5/include/python3.12 \
+                /N/soft/sles15sp6/deeplearning/gpu/Python-3.12.5/include; do
+        if [ -d "$cand" ]; then
+            export CPATH="$cand:${CPATH:-}"
+            export C_INCLUDE_PATH="$cand:${C_INCLUDE_PATH:-}"
+            echo "[env] sysconfig include broken on this node; CPATH falling back to $cand"
+            break
+        fi
+    done
+fi
+
 cd /N/scratch/ayshaikh/FinSent-CoT
 mkdir -p logs
 

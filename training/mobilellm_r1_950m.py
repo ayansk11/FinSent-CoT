@@ -485,14 +485,29 @@ def run_grpo():
     # TRL GRPOTrainer expects model.warnings_issued dict, but PEFT-wrapped
     # models delegate __getattr__ to the base model which lacks it.
     # Set on the underlying model so PEFT's attribute chain finds it.
-    _base = model
-    while hasattr(_base, "base_model"):
-        _base = _base.base_model
-    if hasattr(_base, "model"):
+    #
+    # IMPORTANT: don't use `while hasattr(m, "base_model"): m = m.base_model`.
+    # PEFT issue #1892 documents that `base_model` is a property that can
+    # return self in certain init states, leading to an infinite loop. That
+    # was the root cause of jobs 6914010/6914011 hanging at "Loaded N GRPO
+    # samples" for 36-48h. Use PEFT's get_base_model() which is bounded.
+    print("  [debug] resolving base model for warnings_issued...", flush=True)
+    _base = model.get_base_model() if hasattr(model, "get_base_model") else model
+    # Drop one more level if there's a `.model` attribute (e.g. LlamaForCausalLM.model -> LlamaModel)
+    if hasattr(_base, "model") and not isinstance(getattr(_base, "model", None), str):
         _base = _base.model
     if not hasattr(_base, "warnings_issued"):
         _base.warnings_issued = {}
     model.warnings_issued = _base.warnings_issued
+    print("  [debug] warnings_issued wired up", flush=True)
+
+    # Force-disable kv cache: required for PEFT + GRPO; otherwise the
+    # "Caching is incompatible with gradient checkpointing" warning loop
+    # documented in TRL #3683 can stall the rollout loop.
+    if hasattr(model, "config"):
+        model.config.use_cache = False
+    if hasattr(_base, "config"):
+        _base.config.use_cache = False
 
     # Disable gradient checkpointing for GRPO. The 950M model with small
     # batch doesn't need the memory save, and gradient checkpointing +
