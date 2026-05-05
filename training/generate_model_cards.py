@@ -271,6 +271,115 @@ MODELS = [
             "narrow that reasoning to financial sentiment specifically"
         ),
     },
+    {
+        "key": "mobilellm-r1-950m",
+        "name": "MobileLLM-R1-950M",
+        "family": "MobileLLM",
+        "params_b": 0.95,
+        "base_model": "facebook/MobileLLM-R1-950M",
+        "upstream_model": "facebook/MobileLLM-R1-950M",
+        "full_repo": "Ayansk11/FinSenti-MobileLLM-R1-950M",
+        "gguf_repo": "Ayansk11/FinSenti-MobileLLM-R1-950M-GGUF",
+        "size_bf16_gb": 1.83,
+        "gguf_sizes": {"Q4_K_M": 0.60, "Q5_K_M": 0.70, "Q8_0": 1.00},
+        "sft_hours": 1.64,
+        "grpo_best_step": 200,
+        "best_reward": 3.29,
+        "vram_bf16_gb": 3,
+        "ram_gguf_gb": 1,
+        "max_seq_length": 2048,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "trainer": "PEFT + bitsandbytes (no Unsloth - llama4_text arch unsupported)",
+        "blurb": (
+            "Meta's purpose-built mobile model. The architecture is shaped "
+            "for on-device inference (compact embeddings, untied lm_head, "
+            "shared attention layers) and FinSenti's recipe lifts the "
+            "financial-sentiment quality without changing that footprint"
+        ),
+    },
+    {
+        "key": "tiny-llm-10m",
+        "name": "Tiny-LLM-10M",
+        "family": "Tiny-LLM",
+        "params_b": 0.01,
+        "base_model": "arnir0/Tiny-LLM",
+        "upstream_model": "arnir0/Tiny-LLM",
+        "full_repo": "Ayansk11/FinSenti-Tiny-LLM-10M",
+        "gguf_repo": "Ayansk11/FinSenti-Tiny-LLM-10M-GGUF",
+        "size_bf16_gb": 0.04,
+        "gguf_sizes": {"Q4_K_M": 0.02, "Q5_K_M": 0.02, "Q8_0": 0.04},
+        "sft_hours": 0.11,
+        "grpo_best_step": 400,
+        "best_reward": 2.60,
+        "vram_bf16_gb": 1,
+        "ram_gguf_gb": 1,
+        "max_seq_length": 1024,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "trainer": "PEFT + bitsandbytes (no Unsloth)",
+        "blurb": (
+            "the scaling-floor reference: a 10M-parameter model is barely "
+            "above an embedding lookup, but with focused SFT + GRPO it can "
+            "still hit a respectable format-compliance and consistency score "
+            "on financial sentiment. Useful for showing where the recipe "
+            "stops working, not for production use"
+        ),
+    },
+    {
+        "key": "llama-3.2-1b",
+        "name": "Llama-3.2-1B",
+        "family": "Llama-3",
+        "params_b": 1.23,
+        "base_model": "unsloth/Llama-3.2-1B-Instruct",
+        "upstream_model": "meta-llama/Llama-3.2-1B-Instruct",
+        "full_repo": "Ayansk11/FinSenti-Llama-3.2-1B",
+        "gguf_repo": "Ayansk11/FinSenti-Llama-3.2-1B-GGUF",
+        "size_bf16_gb": 2.47,
+        "gguf_sizes": {"Q4_K_M": 0.75, "Q5_K_M": 0.85, "Q8_0": 1.23},
+        "sft_hours": 0.40,
+        "grpo_best_step": 280,
+        "best_reward": 3.48,
+        "vram_bf16_gb": 3,
+        "ram_gguf_gb": 1,
+        "max_seq_length": 2048,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "trainer": "Unsloth + TRL",
+        "blurb": (
+            "Meta's 1B Instruct variant in the 3.2 generation. A great "
+            "all-rounder around 1 GB at Q4_K_M; the chat templating that "
+            "ships with Llama 3 makes it a clean fit for the structured "
+            "<reasoning>...<answer> output format"
+        ),
+    },
+    {
+        "key": "smollm-1.7b",
+        "name": "SmolLM-1.7B",
+        "family": "SmolLM",
+        "params_b": 1.71,
+        "base_model": "unsloth/SmolLM-1.7B-Instruct",
+        "upstream_model": "HuggingFaceTB/SmolLM-1.7B-Instruct",
+        "full_repo": "Ayansk11/FinSenti-SmolLM-1.7B",
+        "gguf_repo": "Ayansk11/FinSenti-SmolLM-1.7B-GGUF",
+        "size_bf16_gb": 3.42,
+        "gguf_sizes": {"Q4_K_M": 0.98, "Q5_K_M": 1.14, "Q8_0": 1.70},
+        "sft_hours": 0.55,
+        "grpo_best_step": 320,
+        "best_reward": 3.45,
+        "vram_bf16_gb": 4,
+        "ram_gguf_gb": 2,
+        "max_seq_length": 2048,
+        "lora_r": 16,
+        "lora_alpha": 32,
+        "trainer": "Unsloth + TRL",
+        "blurb": (
+            "HuggingFace's SmolLM aims for compact edge deployment with "
+            "competitive quality. Sized between Llama-3.2-1B and Qwen3-1.7B, "
+            "it gives a useful third datapoint in that range and is fully "
+            "open-source down to its training mix"
+        ),
+    },
 ]
 
 # Cluster-wide constants used in every training script.
