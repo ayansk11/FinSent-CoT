@@ -217,6 +217,25 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
 
+    # Tiny-LLM (arnir0/Tiny-LLM) ships without a chat template. SFT used a
+    # Llama-4-style fallback format directly as a string. TRL's GRPOTrainer
+    # passes prompts as a list of {role, content} dicts and unconditionally
+    # calls tokenizer.apply_chat_template, which raises ValueError if no
+    # template is set. So we install the same Llama-4-style format the SFT
+    # phase trained on as a Jinja template, ensuring GRPO prompts match
+    # SFT prompts exactly.
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = (
+            "{% for message in messages %}"
+            "<|header_start|>{{ message['role'] }}<|header_end|>\n\n"
+            "{{ message['content'] }}<|eot|>"
+            "{% endfor %}"
+            "{% if add_generation_prompt %}"
+            "<|header_start|>assistant<|header_end|>\n\n"
+            "{% endif %}"
+        )
+        print("  [Fix] Installed Llama-4-style chat template (matches SFT format)")
+
     model = AutoPeftModelForCausalLM.from_pretrained(
         checkpoint_path,
         device_map={"": 0},
