@@ -302,12 +302,52 @@ def main():
                         help="W&B run name (auto-generated if not set)")
     parser.add_argument("--no-wandb", action="store_true",
                         help="Skip W&B logging entirely (useful for batch runs).")
+    parser.add_argument(
+        "--no-dedup", action="store_true",
+        help="Skip the training-set hash filter. Default is to remove "
+             "samples whose normalized text appears in our 16K-sample "
+             "training pool, so reported numbers are on a leak-free subset. "
+             "Pass --no-dedup only for FinSenti's own internal test "
+             "(validated/raw_test.jsonl, which is held-out by construction) "
+             "or for OOD benchmarks we know don't overlap.",
+    )
+    parser.add_argument(
+        "--zero-shot", action="store_true",
+        help="Mark this run as a zero-shot baseline (untuned base model) "
+             "in the output JSON. Doesn't change benchmark execution; just "
+             "tags model_kind='zero-shot-base' so aggregate.py can group "
+             "FinSenti vs. zero-shot vs. FinBERT separately.",
+    )
     args = parser.parse_args()
 
     # Load test cases
+    n_filtered_for_overlap = 0
+    original_benchmark_size = None
     if args.benchmark:
-        print(f"Loading benchmark {args.benchmark}...")
-        bench_samples = load_benchmark(args.benchmark, max_samples=args.max_samples)
+        if args.no_dedup or args.benchmark == "finsenti":
+            # FinSenti's own test split is held out by construction - no dedup
+            # needed (and applying it would zero out the set).
+            print(f"Loading benchmark {args.benchmark} (no dedup)...")
+            bench_samples = load_benchmark(args.benchmark, max_samples=args.max_samples)
+        else:
+            from dedup import filter_benchmark, training_hashes
+            print(f"Loading benchmark {args.benchmark} with training-overlap filter...")
+            train_h = training_hashes()
+            print(f"  training hash set: {len(train_h):,} unique entries")
+            # Capture original size before filtering for accurate stats
+            from datasets_loader import load_benchmark as _raw_load
+            _raw = _raw_load(args.benchmark, max_samples=None)
+            original_benchmark_size = len(_raw)
+            bench_samples, n_filtered_for_overlap = filter_benchmark(
+                args.benchmark,
+                max_samples=args.max_samples,
+                train_hashes=train_h,
+            )
+            print(
+                f"  benchmark: {original_benchmark_size} total -> "
+                f"{n_filtered_for_overlap} removed ({n_filtered_for_overlap/max(1,original_benchmark_size)*100:.2f}%) -> "
+                f"{len(bench_samples)} clean"
+            )
         test_cases = [
             {
                 "text": s["text"],
@@ -473,12 +513,25 @@ def main():
     # ─── Write JSON output (if requested) ────────────────────────────────────
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        if args.zero_shot:
+            model_kind = "zero-shot-base"
+        elif "FinSenti" in args.model:
+            model_kind = "finsenti"
+        else:
+            model_kind = "other"
         json_blob = {
             "model": args.model,
-            "model_kind": "finsenti" if "FinSenti" in args.model else "other",
+            "model_kind": model_kind,
             "backend": args.backend,
             "benchmark": args.benchmark or ("test-file" if args.test_file else "smoke"),
             "num_samples": total,
+            "original_benchmark_size": original_benchmark_size,
+            "n_filtered_for_overlap": n_filtered_for_overlap,
+            "dedup_applied": (
+                args.benchmark is not None
+                and not args.no_dedup
+                and args.benchmark != "finsenti"
+            ),
             "aggregate": {
                 **sklearn_metrics,
                 "format_compliance": format_compliance / 100.0,

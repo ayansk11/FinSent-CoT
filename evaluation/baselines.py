@@ -88,8 +88,15 @@ def run_baseline(
     max_samples: int | None = None,
     batch_size: int = 32,
     device: str | None = None,
+    apply_dedup: bool = True,
 ) -> dict:
-    """Run one baseline on one benchmark and return the results dict."""
+    """Run one baseline on one benchmark and return the results dict.
+
+    apply_dedup: when True (default), filter benchmark samples whose text
+    overlaps the FinSenti training pool, mirroring evaluation/benchmark.py
+    behaviour. Skipped automatically for the 'finsenti' benchmark (held out
+    by construction) and ignored for FinSenti's own internal test.
+    """
     if baseline not in BASELINES:
         raise ValueError(
             f"Unknown baseline {baseline!r}. Choose from: {list_baselines()}"
@@ -115,8 +122,25 @@ def run_baseline(
         max_length=512,
     )
 
-    samples = load_benchmark(benchmark, max_samples=max_samples)
-    print(f"Running {baseline} on {len(samples)} samples of {benchmark}...")
+    n_filtered = 0
+    original_size = None
+    if apply_dedup and benchmark != "finsenti":
+        from dedup import filter_benchmark, training_hashes
+        train_h = training_hashes()
+        # capture original size before filtering
+        _all = load_benchmark(benchmark, max_samples=None)
+        original_size = len(_all)
+        samples, n_filtered = filter_benchmark(
+            benchmark, max_samples=max_samples, train_hashes=train_h,
+        )
+        print(
+            f"Loaded {benchmark}: {original_size} total -> "
+            f"{n_filtered} removed ({n_filtered/max(1,original_size)*100:.2f}%) -> "
+            f"{len(samples)} clean for {baseline}"
+        )
+    else:
+        samples = load_benchmark(benchmark, max_samples=max_samples)
+        print(f"Running {baseline} on {len(samples)} samples of {benchmark}...")
 
     texts = [s["text"] for s in samples]
     start = time.time()
@@ -150,6 +174,9 @@ def run_baseline(
         "baseline_name": baseline,
         "benchmark": benchmark,
         "num_samples": len(results),
+        "original_benchmark_size": original_size,
+        "n_filtered_for_overlap": n_filtered,
+        "dedup_applied": apply_dedup and benchmark != "finsenti",
         "aggregate": aggregate,
         "results": results,
     }
@@ -239,6 +266,11 @@ def main():
         help="Truncate benchmark to this many samples.",
     )
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--no-dedup", action="store_true",
+        help="Skip the training-set hash filter (default is to apply it for "
+             "fair comparison with FinSenti models that also dedup).",
+    )
     args = parser.parse_args()
 
     result = run_baseline(
@@ -246,6 +278,7 @@ def main():
         benchmark=args.benchmark,
         max_samples=args.max_samples,
         batch_size=args.batch_size,
+        apply_dedup=not args.no_dedup,
     )
 
     agg = result["aggregate"]

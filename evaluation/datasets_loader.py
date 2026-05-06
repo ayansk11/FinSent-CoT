@@ -6,10 +6,12 @@ All loaders return a list of dicts with the same shape:
      "category": str, "id": str}
 
 Supported benchmarks:
-    fpb         Financial PhraseBank (Malo et al., 2014)
-    fiqa        FiQA-2018 task 1 sentiment headlines
-    twitterfin  Twitter Financial News (zeroshot/twitter-financial-news-sentiment)
-    finsenti    Our held-out test slice (validated/raw_test.jsonl)
+    fpb           Financial PhraseBank (Malo et al., 2014)
+    fiqa          FiQA-2018 task 1 sentiment headlines
+    twitterfin    Twitter Financial News (zeroshot/twitter-financial-news-sentiment)
+    finsenti      Our held-out test slice (validated/raw_test.jsonl)
+    financemteb   FinanceMTEB FinSentEnglish (Tsadoq et al., 2024) - OOD
+    asba          Aspect-Based Financial Sentiment via SetFit/financial_news_sentiment - OOD
 
 Examples:
     from evaluation.datasets import load_benchmark
@@ -57,10 +59,14 @@ def load_benchmark(name: str, max_samples: int | None = None) -> list[dict]:
         samples = _load_twitterfin()
     elif name == "finsenti":
         samples = _load_finsenti()
+    elif name == "financemteb":
+        samples = _load_financemteb()
+    elif name == "asba":
+        samples = _load_asba()
     else:
         raise ValueError(
             f"Unknown benchmark {name!r}. "
-            f"Choose from: fpb, fiqa, twitterfin, finsenti."
+            f"Choose from: fpb, fiqa, twitterfin, finsenti, financemteb, asba."
         )
 
     if max_samples is not None:
@@ -69,7 +75,7 @@ def load_benchmark(name: str, max_samples: int | None = None) -> list[dict]:
 
 
 def list_benchmarks() -> list[str]:
-    return ["fpb", "fiqa", "twitterfin", "finsenti"]
+    return ["fpb", "fiqa", "twitterfin", "finsenti", "financemteb", "asba"]
 
 
 # -----------------------------------------------------------------------------
@@ -190,6 +196,116 @@ def _load_finsenti() -> list[dict]:
                 "category": row.get("source", "finsenti"),
                 "id": f"finsenti-{i}",
             })
+    return out
+
+
+def _load_financemteb() -> list[dict]:
+    """FinanceMTEB FinSentEnglish - OOD benchmark.
+
+    A 2024 financial sentiment classification benchmark from the
+    FinanceMTEB project. Distinct sourcing from anything in the FinSenti
+    training pool.
+
+    Source: FinanceMTEB/FinSentEnglish (test split). Labels:
+      0=negative, 1=neutral, 2=positive (verified at load time; if the
+      label schema differs we map by lowercase string).
+
+    Falls back to FinanceMTEB/FinanceBench-Sent if FinSentEnglish
+    isn't available.
+    """
+    from datasets import load_dataset
+    repo_attempts = [
+        ("FinanceMTEB/FinSentEnglish", "test"),
+        ("FinanceMTEB/FinSentEnglish", "train"),
+        ("FinanceMTEB/FinanceBench-Sent", "test"),
+    ]
+    last_err = None
+    for repo, split in repo_attempts:
+        try:
+            ds = load_dataset(repo, split=split, trust_remote_code=True)
+            break
+        except Exception as e:
+            last_err = e
+            continue
+    else:
+        raise RuntimeError(
+            f"Could not load FinanceMTEB benchmark. Last error: {last_err}"
+        )
+
+    out = []
+    for i, row in enumerate(ds):
+        # FinanceMTEB rows typically have {'text', 'label'} where label is
+        # either an int or the string class name. Handle both.
+        text = row.get("text") or row.get("sentence") or ""
+        raw_label = row.get("label", row.get("sentiment", ""))
+        if isinstance(raw_label, int):
+            label = {0: "negative", 1: "neutral", 2: "positive"}.get(raw_label, "neutral")
+        else:
+            s = str(raw_label).strip().lower()
+            label = s if s in ("positive", "negative", "neutral") else "neutral"
+        out.append({
+            "text": text,
+            "expected": label,
+            "category": "financemteb",
+            "id": f"financemteb-{i}",
+        })
+    return out
+
+
+def _load_asba() -> list[dict]:
+    """Aspect-Based Sentiment Analysis on Financial News - OOD.
+
+    Distinct annotation scheme from FPB / FiQA / Twitter. Tries a few
+    candidate HF repos in order; whichever loads first is used.
+
+    Falls through:
+      1. SetFit/financial_news_sentiment
+      2. krishnapal2308/financial_news_sentiment_analysis
+      3. nickmuchi/financial-classification (last resort - this one IS
+         a near-duplicate of FiQA so we'd ideally avoid it; only use if
+         the others fail).
+    """
+    from datasets import load_dataset
+    repo_attempts = [
+        ("SetFit/financial_news_sentiment", "test"),
+        ("SetFit/financial_news_sentiment", "train"),
+        ("krishnapal2308/financial_news_sentiment_analysis", "test"),
+        ("krishnapal2308/financial_news_sentiment_analysis", "train"),
+    ]
+    last_err = None
+    for repo, split in repo_attempts:
+        try:
+            ds = load_dataset(repo, split=split, trust_remote_code=True)
+            break
+        except Exception as e:
+            last_err = e
+            continue
+    else:
+        raise RuntimeError(
+            f"Could not load ASBA financial sentiment benchmark. "
+            f"Last error: {last_err}"
+        )
+
+    out = []
+    for i, row in enumerate(ds):
+        text = row.get("text") or row.get("sentence") or row.get("Sentence") or ""
+        raw_label = (
+            row.get("label_text")
+            or row.get("label")
+            or row.get("sentiment", "")
+        )
+        if isinstance(raw_label, int):
+            # SetFit/financial_news_sentiment has 0=neg, 1=neu, 2=pos in train
+            label = {0: "negative", 1: "neutral", 2: "positive"}.get(raw_label, "neutral")
+        else:
+            s = str(raw_label).strip().lower()
+            label = s if s in ("positive", "negative", "neutral") else "neutral"
+        out.append({
+            "text": text,
+            "expected": label,
+            "category": "asba",
+            "id": f"asba-{i}",
+        })
     return out
 
 
