@@ -85,46 +85,96 @@ def list_benchmarks() -> list[str]:
 def _load_fpb() -> list[dict]:
     """Financial PhraseBank.
 
-    The 50%-agree split is the convention in most FinBERT papers (~4840
-    sentences). If only the all-agree split is available (e.g. when the
-    50agree config isn't cached and the loading-script-based fetch is
-    blocked by newer datasets versions), we fall back to it (~2260 sentences).
+    The original takala/financial_phrasebank repo is loading-script-based
+    and won't fetch on newer `datasets` versions. We fall back to parquet
+    mirrors. The 50%-agree subset (~4840 sentences) is the convention in
+    most FinBERT papers; we prefer mirrors of that split.
 
-    Source: takala/financial_phrasebank.
+    Fallback order:
+      1. takala/financial_phrasebank, sentences_50agree   (original loading script)
+      2. takala/financial_phrasebank, sentences_allagree  (fewer sentences)
+      3. atrost/financial_phrasebank                       (parquet, 50agree, with split)
+      4. FinanceMTEB/financial_phrasebank                  (parquet)
+
+    Schema across mirrors varies; we map column names defensively.
     """
     from datasets import load_dataset
-    config_attempts = ["sentences_50agree", "sentences_allagree"]
+    label_map = LABEL_MAPS["fpb"]
+
+    # Form: (repo, config_or_None, split, source_label)
+    attempts: list[tuple[str, str | None, str, str]] = [
+        ("takala/financial_phrasebank", "sentences_50agree", "train", "takala-50agree"),
+        ("takala/financial_phrasebank", "sentences_allagree", "train", "takala-allagree"),
+        # atrost/financial_phrasebank ships train/validation/test from the
+        # 50agree subset. Loading all three back-to-back gives the canonical
+        # ~4840-row union.
+        ("atrost/financial_phrasebank", None, "train", "atrost-50agree-train"),
+        ("FinanceMTEB/financial_phrasebank", None, "test", "financemteb-fpb-test"),
+        ("FinanceMTEB/financial_phrasebank", None, "train", "financemteb-fpb-train"),
+    ]
     last_err = None
     ds = None
-    used_config = None
-    for config in config_attempts:
+    source = None
+    for repo, config, split, label in attempts:
         try:
-            ds = load_dataset(
-                "takala/financial_phrasebank",
-                config,
-                split="train",
-            )
-            used_config = config
+            if config:
+                ds = load_dataset(repo, config, split=split)
+            else:
+                ds = load_dataset(repo, split=split)
+            source = label
             break
         except Exception as e:
             last_err = e
             continue
     if ds is None:
         raise RuntimeError(
-            f"Could not load FPB. Tried configs {config_attempts}. "
+            f"Could not load FPB from any of {[a[0] for a in attempts]}. "
             f"Last error: {last_err}"
         )
-    if used_config != "sentences_50agree":
-        print(
-            f"  [warn] FPB loaded with {used_config!r} (not the 50agree "
-            f"convention). Numbers in the paper should note the config used."
-        )
-    label_map = LABEL_MAPS["fpb"]
+
+    # If we got atrost, try to also concatenate validation + test for the
+    # full 4840-row 50agree corpus (atrost ships a 64/16/20 split).
+    if source.startswith("atrost"):
+        rows = list(ds)
+        for extra_split in ("validation", "test"):
+            try:
+                extra = load_dataset("atrost/financial_phrasebank", split=extra_split)
+                rows.extend(list(extra))
+            except Exception:
+                pass
+        ds = rows
+
+    if source != "takala-50agree":
+        print(f"  [info] FPB loaded from fallback {source!r}")
+
     out = []
     for i, row in enumerate(ds):
+        text = (
+            row.get("sentence")
+            or row.get("text")
+            or row.get("content")
+            or ""
+        )
+        if not text:
+            continue
+        raw_label = row.get("label", row.get("sentiment"))
+        if isinstance(raw_label, int):
+            label = label_map.get(raw_label, "neutral")
+        elif isinstance(raw_label, str):
+            s = raw_label.strip().lower()
+            if s in ("pos", "positive"):
+                label = "positive"
+            elif s in ("neg", "negative"):
+                label = "negative"
+            elif s in ("neu", "neutral"):
+                label = "neutral"
+            else:
+                label = "neutral"
+        else:
+            label = "neutral"
         out.append({
-            "text": row["sentence"],
-            "expected": label_map[row["label"]],
+            "text": text,
+            "expected": label,
             "category": "fpb",
             "id": f"fpb-{i}",
         })
