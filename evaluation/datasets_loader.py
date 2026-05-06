@@ -83,18 +83,42 @@ def list_benchmarks() -> list[str]:
 # -----------------------------------------------------------------------------
 
 def _load_fpb() -> list[dict]:
-    """Financial PhraseBank, 50%-agree configuration (most common in literature).
+    """Financial PhraseBank.
 
-    Source: takala/financial_phrasebank, config="sentences_50agree".
-    ~4840 sentences across the 50-agree split.
+    The 50%-agree split is the convention in most FinBERT papers (~4840
+    sentences). If only the all-agree split is available (e.g. when the
+    50agree config isn't cached and the loading-script-based fetch is
+    blocked by newer datasets versions), we fall back to it (~2260 sentences).
+
+    Source: takala/financial_phrasebank.
     """
     from datasets import load_dataset
-    ds = load_dataset(
-        "takala/financial_phrasebank",
-        "sentences_50agree",
-        split="train",
-        trust_remote_code=True,
-    )
+    config_attempts = ["sentences_50agree", "sentences_allagree"]
+    last_err = None
+    ds = None
+    used_config = None
+    for config in config_attempts:
+        try:
+            ds = load_dataset(
+                "takala/financial_phrasebank",
+                config,
+                split="train",
+            )
+            used_config = config
+            break
+        except Exception as e:
+            last_err = e
+            continue
+    if ds is None:
+        raise RuntimeError(
+            f"Could not load FPB. Tried configs {config_attempts}. "
+            f"Last error: {last_err}"
+        )
+    if used_config != "sentences_50agree":
+        print(
+            f"  [warn] FPB loaded with {used_config!r} (not the 50agree "
+            f"convention). Numbers in the paper should note the config used."
+        )
     label_map = LABEL_MAPS["fpb"]
     out = []
     for i, row in enumerate(ds):
@@ -117,7 +141,7 @@ def _load_fiqa() -> list[dict]:
     """
     from datasets import load_dataset
     try:
-        ds = load_dataset("pauri32/fiqa-2018", split="train", trust_remote_code=True)
+        ds = load_dataset("pauri32/fiqa-2018", split="train")
     except Exception:
         # Fallback: nickmuchi/financial-classification has a discretized variant
         ds = load_dataset("nickmuchi/financial-classification", split="train")
@@ -200,49 +224,77 @@ def _load_finsenti() -> list[dict]:
 
 
 def _load_financemteb() -> list[dict]:
-    """FinanceMTEB FinSentEnglish - OOD benchmark.
+    """Out-of-distribution financial news sentiment.
 
-    A 2024 financial sentiment classification benchmark from the
-    FinanceMTEB project. Distinct sourcing from anything in the FinSenti
-    training pool.
+    Originally targeted at FinanceMTEB/FinSentEnglish, which doesn't
+    actually exist on the Hub. Swapped to Jean-Baptiste/financial_news_sentiment:
+    ~2000 manually validated Canadian English financial news articles with
+    sentiment labels, distinct sourcing from anything in the FinSenti
+    training pool. The benchmark key 'financemteb' is kept for downstream
+    compatibility (run_all.py / aggregator).
 
-    Source: FinanceMTEB/FinSentEnglish (test split). Labels:
-      0=negative, 1=neutral, 2=positive (verified at load time; if the
-      label schema differs we map by lowercase string).
-
-    Falls back to FinanceMTEB/FinanceBench-Sent if FinSentEnglish
-    isn't available.
+    Schema: {'text', 'sentiment', 'topic', ...}. `sentiment` values are
+    strings like 'positive' / 'negative' / 'neutral' (verified by reading
+    the dataset card).
     """
     from datasets import load_dataset
     repo_attempts = [
-        ("FinanceMTEB/FinSentEnglish", "test"),
-        ("FinanceMTEB/FinSentEnglish", "train"),
-        ("FinanceMTEB/FinanceBench-Sent", "test"),
+        ("Jean-Baptiste/financial_news_sentiment", "train"),
+        ("Jean-Baptiste/financial_news_sentiment", "test"),
+        ("Jean-Baptiste/financial_news_sentiment", "validation"),
     ]
     last_err = None
+    ds = None
     for repo, split in repo_attempts:
         try:
-            ds = load_dataset(repo, split=split, trust_remote_code=True)
+            ds = load_dataset(repo, split=split)
             break
         except Exception as e:
             last_err = e
             continue
-    else:
+    if ds is None:
         raise RuntimeError(
-            f"Could not load FinanceMTEB benchmark. Last error: {last_err}"
+            f"Could not load OOD financial news sentiment benchmark. "
+            f"Last error: {last_err}"
         )
 
     out = []
     for i, row in enumerate(ds):
-        # FinanceMTEB rows typically have {'text', 'label'} where label is
-        # either an int or the string class name. Handle both.
-        text = row.get("text") or row.get("sentence") or ""
-        raw_label = row.get("label", row.get("sentiment", ""))
+        text = (
+            row.get("text")
+            or row.get("title")
+            or row.get("sentence")
+            or row.get("content")
+            or ""
+        )
+        raw_label = (
+            row.get("sentiment")
+            or row.get("label")
+            or row.get("label_text")
+            or ""
+        )
         if isinstance(raw_label, int):
             label = {0: "negative", 1: "neutral", 2: "positive"}.get(raw_label, "neutral")
+        elif isinstance(raw_label, float):
+            if raw_label > 0.1:
+                label = "positive"
+            elif raw_label < -0.1:
+                label = "negative"
+            else:
+                label = "neutral"
         else:
             s = str(raw_label).strip().lower()
-            label = s if s in ("positive", "negative", "neutral") else "neutral"
+            # Normalize common variants
+            if s in ("pos", "positive", "bullish"):
+                label = "positive"
+            elif s in ("neg", "negative", "bearish"):
+                label = "negative"
+            elif s in ("neu", "neutral", "none", ""):
+                label = "neutral"
+            else:
+                label = "neutral"
+        if not text:
+            continue
         out.append({
             "text": text,
             "expected": label,
@@ -253,53 +305,72 @@ def _load_financemteb() -> list[dict]:
 
 
 def _load_asba() -> list[dict]:
-    """Aspect-Based Sentiment Analysis on Financial News - OOD.
+    """Second OOD financial news sentiment benchmark.
 
-    Distinct annotation scheme from FPB / FiQA / Twitter. Tries a few
-    candidate HF repos in order; whichever loads first is used.
+    The original target (SetFit / krishnapal2308) doesn't exist on the
+    Hub. Swapped to Daniel-ML/sentiment-analysis-for-financial-news-v2
+    with prithvi1029/sentiment-analysis-for-financial-news as a backup.
+    Both are FinancialPhraseBank-style retail-investor labels but with
+    distinct sourcing from our training pool. The benchmark key 'asba'
+    is kept for downstream compatibility.
 
-    Falls through:
-      1. SetFit/financial_news_sentiment
-      2. krishnapal2308/financial_news_sentiment_analysis
-      3. nickmuchi/financial-classification (last resort - this one IS
-         a near-duplicate of FiQA so we'd ideally avoid it; only use if
-         the others fail).
+    Note: these may overlap a small amount with FPB; the dedup hash filter
+    removes exact-text overlaps with our training pool, but won't catch
+    cross-benchmark overlap. Reviewers can verify this is OOD by inspecting
+    `n_filtered_for_overlap` in the per-run JSON.
     """
     from datasets import load_dataset
     repo_attempts = [
-        ("SetFit/financial_news_sentiment", "test"),
-        ("SetFit/financial_news_sentiment", "train"),
-        ("krishnapal2308/financial_news_sentiment_analysis", "test"),
-        ("krishnapal2308/financial_news_sentiment_analysis", "train"),
+        ("Daniel-ML/sentiment-analysis-for-financial-news-v2", "train"),
+        ("Daniel-ML/sentiment-analysis-for-financial-news-v2", "test"),
+        ("prithvi1029/sentiment-analysis-for-financial-news", "train"),
+        ("prithvi1029/sentiment-analysis-for-financial-news", "test"),
     ]
     last_err = None
+    ds = None
     for repo, split in repo_attempts:
         try:
-            ds = load_dataset(repo, split=split, trust_remote_code=True)
+            ds = load_dataset(repo, split=split)
             break
         except Exception as e:
             last_err = e
             continue
-    else:
+    if ds is None:
         raise RuntimeError(
-            f"Could not load ASBA financial sentiment benchmark. "
+            f"Could not load OOD ASBA-style financial sentiment benchmark. "
             f"Last error: {last_err}"
         )
 
     out = []
     for i, row in enumerate(ds):
-        text = row.get("text") or row.get("sentence") or row.get("Sentence") or ""
+        text = (
+            row.get("text")
+            or row.get("sentence")
+            or row.get("Sentence")
+            or row.get("headline")
+            or row.get("title")
+            or ""
+        )
         raw_label = (
             row.get("label_text")
+            or row.get("Sentiment")
             or row.get("label")
             or row.get("sentiment", "")
         )
         if isinstance(raw_label, int):
-            # SetFit/financial_news_sentiment has 0=neg, 1=neu, 2=pos in train
             label = {0: "negative", 1: "neutral", 2: "positive"}.get(raw_label, "neutral")
         else:
             s = str(raw_label).strip().lower()
-            label = s if s in ("positive", "negative", "neutral") else "neutral"
+            if s in ("pos", "positive", "bullish"):
+                label = "positive"
+            elif s in ("neg", "negative", "bearish"):
+                label = "negative"
+            elif s in ("neu", "neutral", "none", ""):
+                label = "neutral"
+            else:
+                label = "neutral"
+        if not text:
+            continue
         out.append({
             "text": text,
             "expected": label,

@@ -804,7 +804,7 @@ Apache 2.0, same as the base model.
 
 ## Acknowledgements
 
-Trained on the Indiana University BigRed200 cluster (account `r01510`).
+Trained on the Indiana University BigRed200 cluster.
 Thanks to the Unsloth and TRL teams for the trainer stack, and to the
 Qwen / DeepSeek teams for the base models.
 """
