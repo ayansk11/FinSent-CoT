@@ -84,22 +84,26 @@ BENCHMARKS = ["fpb", "fiqa", "twitterfin", "finsenti", "financemteb", "asba"]
 
 
 # SLURM sbatch script template for a single eval run. Uses --ntasks-per-node=1
-# and one GPU per task. We target the hopper (H100) partition because:
-#   - Native bf16 (V100 doesn't have it; transformers silently casts to fp16
-#     and runs slower)
-#   - 2-3x throughput vs V100 on the small/mid models in this study
-#   - 80GB VRAM easily fits Qwen3.5-9B at bf16
-# 4h wall time covers the worst case (~3000-sample benchmark on a 9B model
-# at ~3s/sample on H100, with headroom for queue slowdowns).
+# and one GPU per task.
+#
+# Partition is `gpu` (V100) - this cluster doesn't have a hopper partition.
+# V100 has no native bf16 so transformers silently casts to fp16, which costs
+# us throughput. Empirical measurements from the first sweep:
+#   - Qwen3-8B:    ~4.4 s/sample
+#   - Qwen3.5-9B:  ~5.6 s/sample
+#   - MobileLLM:  ~10.0 s/sample
+# Worst case (MobileLLM on the 2997-sample ASBA benchmark) takes ~8.3 hours,
+# so 12h wall time gives a clean margin without going overboard. Smaller
+# models on smaller benchmarks finish in well under an hour.
 SBATCH_TEMPLATE = """#!/bin/bash
 #SBATCH --job-name=fs-eval-{short_name}-{benchmark}
 #SBATCH --account=r01510
-#SBATCH --partition=hopper
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=0
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=logs/eval_{short_name}_{benchmark}_%j.out
 #SBATCH --error=logs/eval_{short_name}_{benchmark}_%j.err
 #SBATCH --mail-type=FAIL
@@ -171,15 +175,27 @@ def sbatch_for_zero_shot(
     )
 
 
+_SBATCH_FAILED = False
+
+
 def submit(script: str, dry_run: bool) -> str | None:
-    """Write the script to a temp file and sbatch it. Returns the job id."""
+    """Write the script to a temp file and sbatch it. Returns the job id.
+
+    Fails fast: once any sbatch call returns non-zero (e.g. invalid
+    partition, syntax error in template), bail before submitting another
+    137 broken jobs. The first sbatch failure is almost always a template
+    bug that affects every subsequent job.
+    """
+    global _SBATCH_FAILED
+    if _SBATCH_FAILED:
+        # An earlier sbatch already failed; don't keep trying.
+        return None
     if dry_run:
         print(script)
         print("-" * 70)
         return None
     slurm_dir = Path("slurm/eval_tmp")
     slurm_dir.mkdir(parents=True, exist_ok=True)
-    # Hash the first 80 chars of the script name line for a stable filename
     name_line = next(
         (l for l in script.splitlines() if "--job-name=" in l), ""
     ).split("=")[-1].strip()
@@ -189,9 +205,13 @@ def submit(script: str, dry_run: bool) -> str | None:
         ["sbatch", str(path)], capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
-        print(f"sbatch failed: {result.stderr}", file=sys.stderr)
+        print(f"sbatch failed: {result.stderr.strip()}", file=sys.stderr)
+        print(
+            "  -> aborting remaining submissions. Fix the template and re-run.",
+            file=sys.stderr,
+        )
+        _SBATCH_FAILED = True
         return None
-    # Output is like "Submitted batch job 1234567"
     parts = result.stdout.strip().split()
     return parts[-1] if parts else None
 
