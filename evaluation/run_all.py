@@ -84,17 +84,22 @@ BENCHMARKS = ["fpb", "fiqa", "twitterfin", "finsenti", "financemteb", "asba"]
 
 
 # SLURM sbatch script template for a single eval run. Uses --ntasks-per-node=1
-# and one GPU per task. Small models finish in <10 min so we don't need big
-# walltime.
+# and one GPU per task. We target the hopper (H100) partition because:
+#   - Native bf16 (V100 doesn't have it; transformers silently casts to fp16
+#     and runs slower)
+#   - 2-3x throughput vs V100 on the small/mid models in this study
+#   - 80GB VRAM easily fits Qwen3.5-9B at bf16
+# 4h wall time covers the worst case (~3000-sample benchmark on a 9B model
+# at ~3s/sample on H100, with headroom for queue slowdowns).
 SBATCH_TEMPLATE = """#!/bin/bash
 #SBATCH --job-name=fs-eval-{short_name}-{benchmark}
 #SBATCH --account=r01510
-#SBATCH --partition=gpu
+#SBATCH --partition=hopper
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=0
-#SBATCH --time=01:30:00
+#SBATCH --time=04:00:00
 #SBATCH --output=logs/eval_{short_name}_{benchmark}_%j.out
 #SBATCH --error=logs/eval_{short_name}_{benchmark}_%j.err
 #SBATCH --mail-type=FAIL
