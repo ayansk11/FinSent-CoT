@@ -354,8 +354,16 @@ def run_export(upload=False):
     print("=" * 70)
 
     _wandb_init_safe(project="FinSenti", name=f"export-{SHORT_NAME}", tags=["export", "gguf", MODEL_KEY])
+    # Load the GRPO checkpoint in full bf16 (NOT 4-bit) before merge.
+    # Loading in 4-bit and then calling save_pretrained_merged(..., save_method="merged_16bit")
+    # is the documented Unsloth flow but has been observed to silently produce
+    # uploads whose LoRA adapter never actually folds into the base for this
+    # model (qwen3-1.7B), causing the uploaded model to behave like the
+    # untuned base (markdown-format output, no <reasoning>/<answer> tags).
+    # Loading in bf16 ensures the merge math operates on full-precision base
+    # weights and produces a model that retains the trained format.
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=True)
+        model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=False)
 
     # Save merged HF weights first (needed for GGUF conversion)
     merged_dir = output_dir / "merged_hf"
