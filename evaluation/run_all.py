@@ -60,6 +60,7 @@ FINSENTI_MODELS = {
     "tiny-llm-10m":        ("Ayansk11/FinSenti-Tiny-LLM-10M",        "Tiny-LLM-10M"),
     "llama-3.2-1b":        ("Ayansk11/FinSenti-Llama-3.2-1B",        "Llama-3.2-1B"),
     "smollm-1.7b":         ("Ayansk11/FinSenti-SmolLM-1.7B",         "SmolLM-1.7B"),
+    "gemma3-270m":         ("Ayansk11/FinSenti-Gemma3-270M",         "Gemma3-270M"),
 }
 
 BASELINES = ["finbert", "finbert-tone", "finbert-sentiment"]
