@@ -56,6 +56,16 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
+    # lm_head added to fix format-suppression issue: MobileLLM-R1's base
+    # lm_head is heavily biased toward emitting <think> tokens (its native
+    # DeepSeek-R1-style reasoning prior). Without LoRA on lm_head, even a
+    # well-trained set of projection layers can't override the base's token
+    # preferences, and the deployed model keeps producing <think>... reasoning
+    # instead of our <reasoning>...</reasoning><answer>...</answer> format.
+    # _untie_lm_head() is already called before LoRA is added so this is safe;
+    # we also force tie_word_embeddings=False at export time so the trained
+    # lm_head delta isn't discarded on reload.
+    "lm_head",
 ]
 
 # SFT hyperparameters
@@ -66,7 +76,7 @@ SFT_GRAD_ACCUM = 16
 SFT_LR = 2e-4
 SFT_LORA_R = 16
 SFT_LORA_ALPHA = 32
-SFT_EPOCHS = 3
+SFT_EPOCHS = 5  # bumped from 3 -> 5 to drill format harder vs strong <think> prior
 
 # GRPO hyperparameters
 GRPO_BATCH_SIZE = 2
@@ -612,6 +622,16 @@ def run_export(upload=False):
     )
     model = model.merge_and_unload()
     tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
+
+    # Force tie_word_embeddings=False on the saved config. MobileLLM's base
+    # config ties lm_head to embed_tokens. _untie_lm_head() untied them at
+    # runtime so LoRA could train both independently, but the saved config
+    # still says tied -> on reload, transformers re-ties them and discards
+    # the trained lm_head weights. Setting this here is what makes the
+    # trained lm_head delta survive the round-trip.
+    model.config.tie_word_embeddings = False
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.tie_word_embeddings = False
 
     model.save_pretrained(str(merged_dir))
     tokenizer.save_pretrained(str(merged_dir))

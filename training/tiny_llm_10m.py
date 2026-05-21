@@ -56,6 +56,16 @@ MAX_SEQ_LENGTH = 1024
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
+    # lm_head added: previous Tiny-LLM uploads produced literal garbage
+    # tokens (|<|<|<...|0.000000...) suggesting the base lm_head's mapping
+    # from hidden states to vocab tokens is heavily biased and the LoRA on
+    # projection layers alone can't override it. Including lm_head as a
+    # LoRA target gives the model a path to learn token-distribution shifts.
+    # Combined with tie_word_embeddings=False at export time, the trained
+    # lm_head delta survives reload.
+    # Caveat: at 10M params Tiny-LLM may genuinely lack capacity; this is a
+    # best-effort fix and may still under-perform.
+    "lm_head",
 ]
 
 # SFT hyperparameters
@@ -67,19 +77,21 @@ SFT_GRAD_ACCUM = 16
 SFT_LR = 2e-4
 SFT_LORA_R = 32
 SFT_LORA_ALPHA = 64
-SFT_EPOCHS = 3
+SFT_EPOCHS = 5  # bumped from 3 -> 5: 10M model needs more passes to learn format
 
-# GRPO hyperparameters - tuned down for Tiny-LLM (10M params + 128K vocab).
-# Earlier run (job 6896744) completed SFT in 6 min but GRPO hung with
-# 4 gens * 512 tokens. The huge softmax relative to the tiny model made
-# every generate() call slow; we cap things tighter here.
+# GRPO hyperparameters - re-tuned for Tiny-LLM (10M params + 128K vocab).
+# Earlier run hung with 4 gens * 512 tokens; the cap below stays conservative
+# but bumps max steps from 800 -> 2000 to give the model more time to settle
+# into the trained format. Tiny-LLM is a scaling-floor reference and may
+# never reach high format compliance, but a longer GRPO budget gives it a
+# fair shot.
 GRPO_BATCH_SIZE = 2
 GRPO_GRAD_ACCUM = 4
 GRPO_LR = 5e-5
 GRPO_LORA_R = 16
 GRPO_LORA_ALPHA = 32
 GRPO_NUM_GENERATIONS = 2          # was 4
-GRPO_MAX_STEPS = 800              # was 3000 (Tiny-LLM is a scaling-floor reference, not a SOTA aim)
+GRPO_MAX_STEPS = 2000             # bumped from 800 -> 2000
 GRPO_MAX_COMPLETION_LENGTH = 256  # was 512
 
 # HuggingFace repos
@@ -624,6 +636,16 @@ def run_export(upload=False):
     )
     model = model.merge_and_unload()
     tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
+
+    # Force tie_word_embeddings=False on the saved config. Tiny-LLM (based
+    # on arnir0/Tiny-LLM) ties lm_head to embed_tokens. _untie_lm_head()
+    # untied them at runtime so LoRA could train both independently, but
+    # the saved config still says tied -> on reload, transformers re-ties
+    # and discards the trained lm_head delta. Setting this here is what
+    # makes the trained lm_head delta survive the round-trip.
+    model.config.tie_word_embeddings = False
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.tie_word_embeddings = False
 
     model.save_pretrained(str(merged_dir))
     tokenizer.save_pretrained(str(merged_dir))
