@@ -271,6 +271,13 @@ def main():
         help="Skip the training-set hash filter (default is to apply it for "
              "fair comparison with FinSenti models that also dedup).",
     )
+    # No-op flag accepted for parity with benchmark.py so the same SLURM
+    # template (run_all.py SBATCH_TEMPLATE) can pass --no-wandb to both
+    # runners without crashing baselines (which never used wandb anyway).
+    parser.add_argument(
+        "--no-wandb", action="store_true",
+        help="Accepted for SLURM template parity; baselines never use wandb.",
+    )
     args = parser.parse_args()
 
     result = run_baseline(
