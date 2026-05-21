@@ -113,14 +113,34 @@ def run_baseline(
         device = 0 if torch.cuda.is_available() else -1
 
     print(f"Loading {baseline} from {repo_id} on device={device}...")
-    clf = pipeline(
-        "text-classification",
-        model=repo_id,
-        tokenizer=repo_id,
-        device=device,
-        truncation=True,
-        max_length=512,
-    )
+    try:
+        clf = pipeline(
+            "text-classification",
+            model=repo_id,
+            tokenizer=repo_id,
+            device=device,
+            truncation=True,
+            max_length=512,
+        )
+    except ValueError as e:
+        # yiyanghkust/finbert-tone ships a config.json without `model_type`,
+        # so AutoConfig.from_pretrained fails inside pipeline(). Fall back to
+        # explicit BertForSequenceClassification + BertTokenizer, which are
+        # the actual classes this baseline ships.
+        if "Unrecognized model" not in str(e):
+            raise
+        print(f"  [info] {repo_id} config has no model_type; loading as BERT explicitly")
+        from transformers import (
+            BertForSequenceClassification, BertTokenizer, TextClassificationPipeline,
+        )
+        tok = BertTokenizer.from_pretrained(repo_id)
+        mdl = BertForSequenceClassification.from_pretrained(repo_id)
+        if device != -1:
+            mdl = mdl.to(f"cuda:{device}")
+        clf = TextClassificationPipeline(
+            model=mdl, tokenizer=tok, device=device,
+            truncation=True, max_length=512,
+        )
 
     n_filtered = 0
     original_size = None

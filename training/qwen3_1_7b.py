@@ -21,6 +21,12 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure `from rewards import ...` works regardless of how the script is
+# invoked. Some compute nodes don't include the script's directory on
+# sys.path automatically, which surfaced as `ModuleNotFoundError: No module
+# named 'rewards'` mid-GRPO on the qwen3.5-9b retrain.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 
 def _rebuild_grpo_config(d):
     """Reconstruct GRPOConfig from dict (avoids UnslothGRPOConfig identity issue)."""
@@ -58,6 +64,13 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
+    # lm_head added after first retrain attempt (job 7046677) produced a
+    # merged model whose lm_head was still tied to embed_tokens, causing
+    # the deployed model to emit markdown (### Reasoning:) instead of our
+    # <reasoning>/<answer> tags. With lm_head as a LoRA target the model
+    # can shift token-probability mass toward our format tokens. Combined
+    # with tie_word_embeddings=False at export time.
+    "lm_head",
 ]
 
 # SFT hyperparameters
@@ -365,8 +378,14 @@ def run_export(upload=False):
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=False)
 
-    # Save merged HF weights first (needed for GGUF conversion)
+    # Save merged HF weights first (needed for GGUF conversion).
+    # Force tie_word_embeddings=False so the trained lm_head (LoRA target)
+    # is saved as an independent tensor; otherwise Unsloth re-ties it to
+    # embed_tokens on save and the trained delta is discarded at reload.
     merged_dir = output_dir / "merged_hf"
+    model.config.tie_word_embeddings = False
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.tie_word_embeddings = False
     print(f"\nSaving merged HF weights...")
     model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
 

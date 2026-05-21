@@ -21,6 +21,10 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure `from rewards import ...` works regardless of cwd / sys.path state.
+# This crashed mid-training on the first retrain attempt (job 7046679).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 
 def _rebuild_grpo_config(d):
     """Reconstruct GRPOConfig from dict (avoids UnslothGRPOConfig identity issue)."""
@@ -58,6 +62,10 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
+    # lm_head added: tied embeddings cause projection-only LoRA to fail at
+    # the format-output task. With lm_head as a LoRA target plus
+    # tie_word_embeddings=False at export, the trained delta survives reload.
+    "lm_head",
 ]
 
 # SFT hyperparameters
@@ -399,7 +407,13 @@ def run_export(upload=False):
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=GRPO_OUTPUT, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=False)
 
+    # Force tie_word_embeddings=False so the trained lm_head (LoRA target)
+    # is saved as an independent tensor; otherwise Unsloth re-ties it to
+    # embed_tokens on save and the trained delta is discarded at reload.
     merged_dir = output_dir / "merged_hf"
+    model.config.tie_word_embeddings = False
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.tie_word_embeddings = False
     print(f"\nSaving merged HF weights...")
     model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
 

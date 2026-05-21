@@ -38,6 +38,44 @@ mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TMPDIR" \
 module load python/gpu/3.12.5
 module load cudatoolkit/12.6
 
+# Help triton's JIT linker find libcuda.so.1 (the NVIDIA driver stub).
+_LIBCUDA_PATH=""
+for _p in /usr/lib64/libcuda.so.1 \
+          /usr/lib64/nvidia/libcuda.so.1 \
+          /opt/cray/nvidia/default/lib64/libcuda.so.1 \
+          /usr/lib/x86_64-linux-gnu/libcuda.so.1; do
+    [ -e "$_p" ] && _LIBCUDA_PATH="$_p" && break
+done
+if [ -n "$_LIBCUDA_PATH" ]; then
+    _LIBCUDA_DIR=$(dirname "$_LIBCUDA_PATH")
+    export LD_LIBRARY_PATH="$_LIBCUDA_DIR:${LD_LIBRARY_PATH:-}"
+    export TRITON_LIBCUDA_PATH="$_LIBCUDA_DIR"
+    echo "[env] Using libcuda.so.1 at $_LIBCUDA_PATH"
+else
+    echo "[env] WARNING: libcuda.so.1 not found; triton JIT may fail"
+fi
+
+# Triton's JIT compile passes -I<sysconfig include path> to gcc to find Python.h.
+# On some compute nodes the cluster's Python install reports a non-existent
+# /geode2/.../Python-3.12.5/Include (capital I) which fails the gcc step.
+# CPATH/C_INCLUDE_PATH act as additional -I flags so gcc still finds Python.h.
+PYINCLUDE="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["include"])' 2>/dev/null)"
+if [ -d "${PYINCLUDE:-}" ]; then
+    export CPATH="$PYINCLUDE:${CPATH:-}"
+    export C_INCLUDE_PATH="$PYINCLUDE:${C_INCLUDE_PATH:-}"
+    echo "[env] CPATH includes $PYINCLUDE"
+else
+    for cand in /N/soft/sles15sp6/deeplearning/gpu/Python-3.12.5/include/python3.12 \
+                /N/soft/sles15sp6/deeplearning/gpu/Python-3.12.5/include; do
+        if [ -d "$cand" ]; then
+            export CPATH="$cand:${CPATH:-}"
+            export C_INCLUDE_PATH="$cand:${C_INCLUDE_PATH:-}"
+            echo "[env] sysconfig include broken; CPATH falling back to $cand"
+            break
+        fi
+    done
+fi
+
 cd /N/scratch/ayshaikh/FinSent-CoT
 source venv/bin/activate
 mkdir -p logs
