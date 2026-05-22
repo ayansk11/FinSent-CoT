@@ -144,7 +144,14 @@ PARAMETER num_predict 512
 # ─── Shared: PEFT model loading ──────────────────────────────────────────────
 
 def _setup_pad_token(tokenizer, model):
-    """Add a dedicated pad token if pad collides with eos (causes label masking issues)."""
+    """Add a dedicated pad token if pad collides with eos.
+
+    Also resizes lm_head when it's been untied from embed_tokens, otherwise
+    LoRA on lm_head crashes with a shape mismatch (resize_token_embeddings
+    only touches input embeddings when lm_head is a separate tensor).
+    """
+    import torch
+    import torch.nn as nn
     needs_new_pad = (
         tokenizer.pad_token is None
         or (tokenizer.eos_token_id is not None and tokenizer.pad_token_id == tokenizer.eos_token_id)
@@ -152,7 +159,25 @@ def _setup_pad_token(tokenizer, model):
     if needs_new_pad:
         tokenizer.add_special_tokens({"pad_token": "<|finsenti_pad|>"})
         if model is not None:
-            model.resize_token_embeddings(len(tokenizer))
+            new_vocab = len(tokenizer)
+            model.resize_token_embeddings(new_vocab)
+            for inner in (model, getattr(model, 'model', None),
+                          getattr(getattr(model, 'model', None), 'model', None)):
+                if inner is None or not hasattr(inner, 'lm_head'):
+                    continue
+                lm_head = inner.lm_head
+                if lm_head.weight.shape[0] != new_vocab:
+                    old_w = lm_head.weight.data
+                    new_lm = nn.Linear(
+                        old_w.shape[1], new_vocab, bias=lm_head.bias is not None,
+                    ).to(old_w.device, old_w.dtype)
+                    with torch.no_grad():
+                        new_lm.weight[:old_w.shape[0]].copy_(old_w)
+                        if new_vocab > old_w.shape[0]:
+                            new_lm.weight[old_w.shape[0]:] = old_w.mean(dim=0, keepdim=True)
+                    inner.lm_head = new_lm
+                    print(f"  [Fix] Manually resized lm_head {old_w.shape[0]} -> {new_vocab}")
+                break
         print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
     else:
         print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
@@ -203,9 +228,12 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
         torch_dtype=torch.bfloat16,
     )
 
-    # Add dedicated pad token + untie lm_head BEFORE adding LoRA
-    _setup_pad_token(tokenizer, model)
+    # Untie FIRST so _setup_pad_token can resize lm_head independently
+    # of embed_tokens. If we resize first, transformers' resize only touches
+    # input embeddings for the tied case, leaving lm_head at old vocab size,
+    # which then crashes when LoRA-on-lm_head sees the mismatch in forward.
     _untie_lm_head(model)
+    _setup_pad_token(tokenizer, model)
 
     lora_config = LoraConfig(
         r=lora_r,
@@ -256,8 +284,9 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     )
     model = model.merge_and_unload()
 
-    _setup_pad_token(tokenizer, model)
+    # Untie first (same reasoning as _load_base_model_peft).
     _untie_lm_head(model)
+    _setup_pad_token(tokenizer, model)
 
     lora_config = LoraConfig(
         r=lora_r,
@@ -411,6 +440,12 @@ def run_grpo():
     from datasets import Dataset
     from trl import GRPOConfig, GRPOTrainer
 
+    # Belt-and-suspenders: re-add training/ to sys.path right before imports.
+    import sys as _sys
+    from pathlib import Path as _Path
+    _here = str(_Path(__file__).resolve().parent)
+    if _here not in _sys.path:
+        _sys.path.insert(0, _here)
     from rewards import (
         sentiment_correctness_reward,
         format_compliance_reward,
