@@ -279,18 +279,27 @@ def run_grpo():
     from datasets import Dataset
     from unsloth import FastLanguageModel
     from trl import GRPOConfig, GRPOTrainer
-    # Belt-and-suspenders: re-add training/ to sys.path right before the
-    # rewards import. The module-level sys.path.insert at the top of this
-    # file was observed to be clobbered by Unsloth's import machinery on
-    # some compute nodes (silently dropped before run_grpo executes),
-    # causing ModuleNotFoundError: No module named 'rewards' mid-pipeline.
-    import sys as _sys
+    # Load rewards.py and callbacks.py by explicit file path, bypassing
+    # sys.path entirely. Earlier attempts at sys.path.insert failed
+    # mysteriously on compute nodes - the import still raised
+    # ModuleNotFoundError even though sys.path[0] pointed at training/.
+    # importlib.util.spec_from_file_location is bulletproof: it loads
+    # the file directly without consulting sys.path or any import cache.
+    import importlib.util as _ilu
     from pathlib import Path as _Path
-    _here = str(_Path(__file__).resolve().parent)
-    if _here not in _sys.path:
-        _sys.path.insert(0, _here)
-    from rewards import sentiment_correctness_reward, format_compliance_reward, reasoning_quality_reward, consistency_reward
-    from callbacks import RewardEarlyStoppingCallback
+    _here = _Path(__file__).resolve().parent
+    def _load_local(_name):
+        _spec = _ilu.spec_from_file_location(_name, _here / f"{_name}.py")
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        return _mod
+    _rewards = _load_local("rewards")
+    _callbacks = _load_local("callbacks")
+    sentiment_correctness_reward = _rewards.sentiment_correctness_reward
+    format_compliance_reward = _rewards.format_compliance_reward
+    reasoning_quality_reward = _rewards.reasoning_quality_reward
+    consistency_reward = _rewards.consistency_reward
+    RewardEarlyStoppingCallback = _callbacks.RewardEarlyStoppingCallback
 
     _patched = _patch_masked_batch_mean()
     if _patched is not None:

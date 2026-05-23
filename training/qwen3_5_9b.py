@@ -293,14 +293,23 @@ def run_grpo():
     from datasets import Dataset
     from unsloth import FastLanguageModel
     from trl import GRPOConfig, GRPOTrainer
-    # Belt-and-suspenders: re-add training/ to sys.path right before import.
-    import sys as _sys
+    # Load rewards/callbacks via importlib (bypasses sys.path entirely).
+    import importlib.util as _ilu
     from pathlib import Path as _Path
-    _here = str(_Path(__file__).resolve().parent)
-    if _here not in _sys.path:
-        _sys.path.insert(0, _here)
-    from rewards import sentiment_correctness_reward, format_compliance_reward, reasoning_quality_reward, consistency_reward
-    from callbacks import RewardEarlyStoppingCallback
+    _here = _Path(__file__).resolve().parent
+    def _load_local(_name):
+        _spec = _ilu.spec_from_file_location(_name, _here / f"{_name}.py")
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        return _mod
+    _rewards = _load_local("rewards")
+    _callbacks = _load_local("callbacks")
+    sentiment_correctness_reward = _rewards.sentiment_correctness_reward
+    format_compliance_reward = _rewards.format_compliance_reward
+    reasoning_quality_reward = _rewards.reasoning_quality_reward
+    consistency_reward = _rewards.consistency_reward
+    RewardEarlyStoppingCallback = _callbacks.RewardEarlyStoppingCallback
+    # callbacks loaded via importlib above
 
     # Monkey-patch Qwen3.5 compute_3d_position_ids to handle empty delta tensor
     # (transformers 5.2.0 bug: delta has size 0 when completions are empty)
