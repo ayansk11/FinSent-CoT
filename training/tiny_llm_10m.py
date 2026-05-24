@@ -56,17 +56,9 @@ MAX_SEQ_LENGTH = 1024
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
-    # lm_head added: previous Tiny-LLM uploads produced literal garbage
-    # tokens (|<|<|<...|0.000000...) suggesting the base lm_head's mapping
-    # from hidden states to vocab tokens is heavily biased and the LoRA on
-    # projection layers alone can't override it. Including lm_head as a
-    # LoRA target gives the model a path to learn token-distribution shifts.
-    # Combined with tie_word_embeddings=False at export time, the trained
-    # lm_head delta survives reload.
-    # Caveat: at 10M params Tiny-LLM may genuinely lack capacity; this is a
-    # best-effort fix and may still under-perform.
-    "lm_head",
 ]
+# Full-tensor saves (not LoRA) — see mobilellm_r1_950m.py for rationale.
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
 # SFT hyperparameters
 # Tiny-LLM uses Llama's 128k vocabulary even though model is only 13M params.
@@ -239,6 +231,7 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",
@@ -250,10 +243,15 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
 
 
 def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
-    """Load PEFT checkpoint in bf16, merge SFT adapters, add fresh GRPO LoRA."""
+    """Load PEFT checkpoint in bf16, merge SFT adapters, add fresh GRPO LoRA.
+
+    Uses the explicit base+resize+adapter reload pattern (per PEFT issue #1457
+    + transformers #36550) to avoid the AutoPeftModelForCausalLM auto-resize
+    breaking on modules_to_save'd lm_head/embed_tokens with new vocab.
+    """
     import torch
-    from transformers import AutoTokenizer
-    from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, PeftModel, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
 
@@ -276,15 +274,22 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
         )
         print("  [Fix] Installed Llama-4-style chat template (matches SFT format)")
 
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        checkpoint_path,
+    # Load fresh base, untie+resize, THEN load adapter on top (avoids
+    # AutoPeftModelForCausalLM auto-resize size-mismatch).
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    model = PeftModel.from_pretrained(
+        base, checkpoint_path,
+        is_trainable=False,
+        torch_dtype=torch.bfloat16,
+    )
     model = model.merge_and_unload()
-
-    # Untie first (same reasoning as _load_base_model_peft).
     _untie_lm_head(model)
     _setup_pad_token(tokenizer, model)
 
@@ -292,6 +297,7 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",

@@ -62,11 +62,9 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
-    # lm_head added: tied embeddings cause projection-only LoRA to fail at
-    # the format-output task. With lm_head as a LoRA target plus
-    # tie_word_embeddings=False at export, the trained delta survives reload.
-    "lm_head",
 ]
+# Full-tensor saves (not LoRA) — see qwen3_1_7b.py for rationale + refs.
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
 # SFT hyperparameters
 SFT_BATCH_SIZE = 4
@@ -191,6 +189,7 @@ def run_sft():
         model_name=BASE_MODEL, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=True)
     model = FastLanguageModel.get_peft_model(
         model, r=SFT_LORA_R, target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_alpha=SFT_LORA_ALPHA, lora_dropout=0, bias="none",
         use_gradient_checkpointing="unsloth")
 

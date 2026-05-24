@@ -116,6 +116,12 @@ fi
 # Install gguf module (needed by convert_hf_to_gguf.py)
 python -m pip install gguf -q 2>/dev/null || true
 
+# Upgrade Unsloth to pick up the PR #2673 fix for save_pretrained_merged
+# with modules_to_save'd lm_head/embed_tokens (issue #2238 closure).
+# Quiet upgrade; -U handles "already at latest" gracefully.
+python -m pip install -U -q unsloth unsloth-zoo 2>/dev/null || \
+    echo "[warn] unsloth upgrade failed (offline?); proceeding with installed version"
+
 # Ensure llama.cpp tools are in PATH for GGUF export
 export PATH="$PWD/llama.cpp/build/bin:$PATH"
 

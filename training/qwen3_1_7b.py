@@ -64,14 +64,16 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
-    # lm_head added after first retrain attempt (job 7046677) produced a
-    # merged model whose lm_head was still tied to embed_tokens, causing
-    # the deployed model to emit markdown (### Reasoning:) instead of our
-    # <reasoning>/<answer> tags. With lm_head as a LoRA target the model
-    # can shift token-probability mass toward our format tokens. Combined
-    # with tie_word_embeddings=False at export time.
-    "lm_head",
 ]
+# lm_head + embed_tokens saved as FULL tensors (not LoRA deltas) via the
+# modules_to_save mechanism. This is the PEFT/Unsloth canonical pattern
+# for training output head + input embeddings on tied-embedding models.
+# Putting them in target_modules triggers Unsloth's "# of LoRAs != saved
+# modules" save error (issue #2238). With modules_to_save, the full
+# trained weights ship in the adapter file and survive save+reload.
+# Refs: https://github.com/unslothai/unsloth/issues/2238
+#       https://github.com/huggingface/peft/issues/1457
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
 # SFT hyperparameters
 SFT_BATCH_SIZE = 8
@@ -177,6 +179,7 @@ def run_sft():
         model_name=BASE_MODEL, max_seq_length=MAX_SEQ_LENGTH, dtype=torch.bfloat16, load_in_4bit=True)
     model = FastLanguageModel.get_peft_model(
         model, r=SFT_LORA_R, target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_alpha=SFT_LORA_ALPHA, lora_dropout=0, bias="none",
         use_gradient_checkpointing="unsloth")
 

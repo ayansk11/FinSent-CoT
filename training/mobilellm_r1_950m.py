@@ -56,17 +56,18 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
-    # lm_head added to fix format-suppression issue: MobileLLM-R1's base
-    # lm_head is heavily biased toward emitting <think> tokens (its native
-    # DeepSeek-R1-style reasoning prior). Without LoRA on lm_head, even a
-    # well-trained set of projection layers can't override the base's token
-    # preferences, and the deployed model keeps producing <think>... reasoning
-    # instead of our <reasoning>...</reasoning><answer>...</answer> format.
-    # _untie_lm_head() is already called before LoRA is added so this is safe;
-    # we also force tie_word_embeddings=False at export time so the trained
-    # lm_head delta isn't discarded on reload.
-    "lm_head",
 ]
+# Modules to save as FULL tensors (not LoRA deltas). lm_head + embed_tokens
+# go here instead of TARGET_MODULES because the PEFT/Unsloth canonical pattern
+# for training the output head + input embeddings on tied-embedding models is
+# modules_to_save, NOT target_modules. Adding them to target_modules triggers:
+#   - Unsloth: "# of LoRAs != saved modules" save error (issue #2238)
+#   - PEFT: AutoPeftModelForCausalLM reload size mismatch (peft issue #1457)
+# With modules_to_save, the full trained weights ship in the adapter file and
+# survive reload cleanly. See:
+# https://github.com/huggingface/peft/issues/1457
+# https://github.com/unslothai/unsloth/issues/2238
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
 # SFT hyperparameters
 # Batch reduced from 8 to 2: MobileLLM has 128k vocab → logits tensor (batch × seq × vocab)
@@ -242,6 +243,7 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",
@@ -255,25 +257,42 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
 def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     """Load PEFT checkpoint in bf16, merge SFT adapters, add fresh GRPO LoRA.
 
-    Same approach as _load_base_model_peft: full bf16, untied lm_head,
-    dedicated pad token. No quantization to avoid NaN gradient issue.
+    Uses the explicit base+resize+adapter reload pattern recommended by the
+    PEFT maintainers, instead of AutoPeftModelForCausalLM.from_pretrained.
+    The auto path auto-resizes the base via the tokenizer and gets confused
+    when modules_to_save shipped a full-tensor lm_head/embed_tokens with a
+    different vocab size than the original base. See:
+      https://github.com/huggingface/peft/issues/1457
+      https://github.com/huggingface/transformers/issues/36550
     """
     import torch
-    from transformers import AutoTokenizer
-    from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, PeftModel, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
 
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        checkpoint_path,
+    # 1. Load fresh base from the upstream repo (not from checkpoint dir).
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
-    # Merge SFT LoRA into base, then add fresh GRPO LoRA
+    # 2. Untie + resize lm_head/embed_tokens BEFORE adapter load so the
+    #    full-tensor lm_head/embed_tokens that ship in the adapter file
+    #    have a target with matching shape.
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    # 3. Now load the SFT adapter on top of the resized base.
+    model = PeftModel.from_pretrained(
+        base, checkpoint_path,
+        is_trainable=False,
+        torch_dtype=torch.bfloat16,
+    )
+    # 4. Merge SFT LoRA into base, then add fresh GRPO LoRA.
     model = model.merge_and_unload()
-
-    # Untie FIRST (same reasoning as _load_base_model_peft), then setup pad.
+    # Untie + pad are already applied above, but re-call just in case the
+    # merge unwrapped any ModulesToSaveWrapper back to a tied state.
     _untie_lm_head(model)
     _setup_pad_token(tokenizer, model)
 
@@ -281,6 +300,7 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",

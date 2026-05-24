@@ -67,13 +67,9 @@ MAX_SEQ_LENGTH = 2048
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
-    # lm_head included from the start (same rationale as the MobileLLM fix):
-    # Gemma 3 270M has tied embeddings, so without LoRA on lm_head the saved
-    # merged model loses the trained token-distribution shift on reload.
-    # _untie_lm_head() is called before LoRA setup; tie_word_embeddings=False
-    # is forced at export time.
-    "lm_head",
 ]
+# Full-tensor saves (not LoRA) — see mobilellm_r1_950m.py for rationale.
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
 # SFT hyperparameters
 # Gemma 3 270M vocab is ~262k (close to Llama-3's 128k but larger). Logits
@@ -240,6 +236,7 @@ def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",
@@ -256,22 +253,30 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
     Same approach as _load_base_model_peft: full bf16, untied lm_head,
     dedicated pad token. No quantization to avoid NaN gradient issue.
     """
+    # Explicit base+resize+adapter reload pattern (per PEFT issue #1457 +
+    # transformers #36550). Avoids AutoPeftModelForCausalLM auto-resize
+    # size-mismatch on modules_to_save'd lm_head/embed_tokens.
     import torch
-    from transformers import AutoTokenizer
-    from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, PeftModel, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
 
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        checkpoint_path,
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
-    # Merge SFT LoRA into base, then add fresh GRPO LoRA
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    model = PeftModel.from_pretrained(
+        base, checkpoint_path,
+        is_trainable=False,
+        torch_dtype=torch.bfloat16,
+    )
+    # Merge SFT LoRA into base, then add fresh GRPO LoRA below.
     model = model.merge_and_unload()
-
-    # Untie first (same reasoning as _load_base_model_peft).
     _untie_lm_head(model)
     _setup_pad_token(tokenizer, model)
 
@@ -279,6 +284,7 @@ def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
         r=lora_r,
         lora_alpha=lora_alpha,
         target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
         lora_dropout=0,
         bias="none",
         task_type="CAUSAL_LM",
