@@ -644,8 +644,8 @@ def run_grpo():
 def run_export(upload=False):
     import torch
     import wandb
-    from transformers import AutoTokenizer
-    from peft import AutoPeftModelForCausalLM
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import PeftModel
 
     output_dir = Path(EXPORT_OUTPUT)
     merged_dir = output_dir / "merged_hf"
@@ -671,18 +671,26 @@ def run_export(upload=False):
         },
     )
 
-    # Merge PEFT adapters and save HF weights
+    # Merge PEFT adapters and save HF weights.
+    # IMPORTANT: load base, resize embeddings to match the adapter's vocab,
+    # then attach adapter. AutoPeftModelForCausalLM.from_pretrained does
+    # these in the wrong order and produces a size mismatch on lm_head +
+    # embed_tokens (issue verified in job 7088171). Mirrors the pattern
+    # in _load_peft_checkpoint() above.
     print(f"Loading and merging PEFT adapters from {GRPO_OUTPUT}...")
     start = time.time()
 
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        GRPO_OUTPUT,
+    tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
     )
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    model = PeftModel.from_pretrained(base, GRPO_OUTPUT)
     model = model.merge_and_unload()
-    tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
 
     # Force tie_word_embeddings=False on the saved config. MobileLLM's base
     # config ties lm_head to embed_tokens. _untie_lm_head() untied them at
