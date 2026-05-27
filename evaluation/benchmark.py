@@ -135,8 +135,16 @@ SYSTEM_PROMPT = (
     "and provide:\n"
     "1. Your reasoning in <reasoning> tags\n"
     "2. Your sentiment classification (positive, negative, or neutral) in "
-    "<answer> tags"
+    "<answer> tags\n\n"
+    "Always use this exact format:\n"
+    "<reasoning>\n[Your step-by-step analysis]\n</reasoning>\n"
+    "<answer>[positive/negative/neutral]</answer>"
 )
+# NOTE: this prompt MUST match the SYSTEM_PROMPT used during SFT/GRPO training
+# (see training/*.py). Mismatched prompts cause smaller models (Gemma3-270M,
+# Qwen3-1.7B, MobileLLM-R1-950M, etc.) to fall back to base-model behavior and
+# skip the <reasoning>/<answer> format entirely — even though their weights
+# are correctly trained.
 
 
 def query_vllm(client, model: str, text: str) -> str:
