@@ -140,7 +140,9 @@ python {runner} \\
 # to close </think> and reach <answer>, so eval scores 0 even though the
 # trained weights are fine. Bump it to 2048 so the model can finish.
 PER_MODEL_MAX_NEW_TOKENS = {
-    "mobilellm-r1-950m": 2048,
+    "mobilellm-r1-950m": 2048,  # native <think> tag, needs room to close
+    "gemma3-270m": 2048,        # same truncation pattern, 72% open
+                                 # <reasoning> but only 10% close it within 512
 }
 
 
