@@ -104,7 +104,7 @@ SBATCH_TEMPLATE = """#!/bin/bash
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=0
-#SBATCH --time=12:00:00
+#SBATCH --time=20:00:00
 #SBATCH --output=logs/eval_{short_name}_{benchmark}_%j.out
 #SBATCH --error=logs/eval_{short_name}_{benchmark}_%j.err
 #SBATCH --mail-type=FAIL
@@ -134,16 +134,29 @@ python {runner} \\
 """
 
 
+# Per-model generation budget override. Most models close <reasoning>+<answer>
+# comfortably within 512 tokens. MobileLLM-R1 inherits Qwen's native <think>
+# reasoning tag and writes a long open-ended thinking block; 512 isn't enough
+# to close </think> and reach <answer>, so eval scores 0 even though the
+# trained weights are fine. Bump it to 2048 so the model can finish.
+PER_MODEL_MAX_NEW_TOKENS = {
+    "mobilellm-r1-950m": 2048,
+}
+
+
 def sbatch_for_finsenti(
     key: str, repo_id: str, benchmark: str, max_samples: int | None
 ) -> str:
     short = key.replace(".", "-")
+    extra = ""
+    if key in PER_MODEL_MAX_NEW_TOKENS:
+        extra = f" --max-new-tokens {PER_MODEL_MAX_NEW_TOKENS[key]}"
     return SBATCH_TEMPLATE.format(
         short_name=short,
         benchmark=benchmark,
         subdir="finsenti",
         runner="evaluation/benchmark.py",
-        runner_args=f"--backend transformers --model {repo_id}",
+        runner_args=f"--backend transformers --model {repo_id}{extra}",
         max_samples=max_samples or 10000,
     )
 

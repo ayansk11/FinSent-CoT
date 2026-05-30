@@ -326,6 +326,15 @@ def main():
              "tags model_kind='zero-shot-base' so aggregate.py can group "
              "FinSenti vs. zero-shot vs. FinBERT separately.",
     )
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=512,
+        help="Generation length cap (transformers backend only). Default "
+             "512 fits the trained <reasoning>+<answer> envelope for most "
+             "models. Bump for models that emit a long thinking block "
+             "(MobileLLM uses native <think> tags) — without enough room "
+             "to close </think> the model never reaches <answer> and "
+             "scores 0.",
+    )
     args = parser.parse_args()
 
     # Load test cases
@@ -436,7 +445,10 @@ def main():
             elif args.backend == "vllm":
                 response = query_vllm(client, args.model, tc["text"])
             else:
-                response = query_transformers(args.model, tc["text"])
+                response = query_transformers(
+                    args.model, tc["text"],
+                    max_new_tokens=args.max_new_tokens,
+                )
 
             latency = time.time() - start
             eval_result = evaluate_response(response, tc["expected"])
