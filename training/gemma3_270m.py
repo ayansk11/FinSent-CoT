@@ -91,6 +91,12 @@ GRPO_LORA_ALPHA = 32
 GRPO_NUM_GENERATIONS = 4
 GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
+# DAPO stabilisation: gemma3-270m fails via inference-time entropy
+# collapse ('index index index...'). Clip-higher keeps the policy
+# exploratory during RL; beta=0 drops the KL anchor (reasoning-RL std).
+GRPO_EPSILON = 0.20
+GRPO_EPSILON_HIGH = 0.28
+GRPO_BETA = 0.0
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-Gemma3-270M"
@@ -501,27 +507,39 @@ def run_grpo():
     _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
     _config_key = "config" if "config" in _grpo_params else "args"
 
+    _grpoconfig_params = inspect.signature(GRPOConfig.__init__).parameters
+    grpo_cfg_kwargs = dict(
+    output_dir=GRPO_OUTPUT,
+    max_steps=GRPO_MAX_STEPS,
+    per_device_train_batch_size=GRPO_BATCH_SIZE,
+    gradient_accumulation_steps=GRPO_GRAD_ACCUM,
+    learning_rate=GRPO_LR,
+    lr_scheduler_type="cosine",
+    warmup_ratio=0.1,
+    num_generations=GRPO_NUM_GENERATIONS,
+    max_completion_length=GRPO_MAX_COMPLETION_LENGTH,
+    max_prompt_length=512, mask_truncated_completions=True,
+    logging_steps=10,
+    save_steps=50,
+    save_total_limit=5,
+    bf16=True,
+    report_to="wandb",
+    run_name=wandb.run.name if wandb.run else "grpo",
+    seed=42,
+    )
+    if 'epsilon' in _grpoconfig_params: grpo_cfg_kwargs['epsilon'] = GRPO_EPSILON
+    if 'epsilon_high' in _grpoconfig_params:
+        grpo_cfg_kwargs['epsilon_high'] = GRPO_EPSILON_HIGH
+        print(f'  [DAPO] clip-higher enabled: epsilon_high={GRPO_EPSILON_HIGH}')
+    else:
+        print('  [warn] epsilon_high not in this TRL build; vanilla GRPO clipping')
+    if 'beta' in _grpoconfig_params:
+        grpo_cfg_kwargs['beta'] = GRPO_BETA
+        print('  [DAPO] KL penalty disabled (beta=0)')
+
     trainer_kwargs = {
         "model": model,
-        _config_key: GRPOConfig(
-            output_dir=GRPO_OUTPUT,
-            max_steps=GRPO_MAX_STEPS,
-            per_device_train_batch_size=GRPO_BATCH_SIZE,
-            gradient_accumulation_steps=GRPO_GRAD_ACCUM,
-            learning_rate=GRPO_LR,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.1,
-            num_generations=GRPO_NUM_GENERATIONS,
-            max_completion_length=GRPO_MAX_COMPLETION_LENGTH,
-            max_prompt_length=512, mask_truncated_completions=True,
-            logging_steps=10,
-            save_steps=50,
-            save_total_limit=5,
-            bf16=True,
-            report_to="wandb",
-            run_name=wandb.run.name if wandb.run else "grpo",
-            seed=42,
-        ),
+        _config_key: GRPOConfig(**grpo_cfg_kwargs),
         "train_dataset": dataset,
         "reward_funcs": [
             sentiment_correctness_reward,

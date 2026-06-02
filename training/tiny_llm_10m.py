@@ -1,33 +1,10 @@
 """
-FinSenti - Tiny-LLM-10M: SFT -> GRPO -> Export -> Upload
+FinSenti - MobileLLM-R1-950M: SFT -> GRPO -> Export -> Upload
 
 Single self-contained script for the complete training pipeline.
-
-Why this script does NOT use PEFT/LoRA (rewritten 2026-05-29):
-  - First run trained arnir0/Tiny-LLM (10M, FineWeb-pretrained base
-    completion model) with LoRA r=32 SFT + LoRA r=16 GRPO. After GRPO the
-    model collapsed to a single-token loop ("<<<<<<...").
-  - Direct inference confirmed the base model produces coherent English
-    zero-shot, so the failure was the training pipeline, not model size.
-  - Root cause matches verl#3226 ("Model output collapses into garbled
-    text during GRPO + LoRA + Reward Model training"): GRPO + LoRA on
-    small models drives entropy collapse. The verl maintainers confirm
-    "this issue does not occur during full fine-tuning (lora_rank=0)".
-  - 10M parameters x bf16 = 20 MB. LoRA's parameter-efficiency premise
-    doesn't apply at this scale. Full FT is the documented fix.
-
-DAPO-style stabilisation on top of full FT:
-  - epsilon_high > epsilon  (clip-higher, prevents entropy collapse)
-  - beta = 0                 (no KL penalty; standard for reasoning RL)
-  - num_generations = 4      (group of 4 rollouts for advantage variance)
-  - lower learning rates     (1e-5 SFT, 5e-6 GRPO -- 10x lower than LoRA)
-
-Prompt format:
-  - arnir0/Tiny-LLM is a base completion model with NO chat template.
-  - We install a markdown-style template ("### System ... ### Input ...
-    ### Response ...") that the FineWeb base will recognise from its
-    pretraining distribution and that we save with the model so
-    benchmark.py can apply it at inference.
+Uses standard PEFT + bitsandbytes (Unsloth does not support MobileLLM arch).
+Export: merges PEFT adapters and saves HF weights. GGUF conversion requires
+manual llama.cpp convert_hf_to_gguf.py.
 
 Dataset: Ayansk11/FinSenti-Dataset (local validated splits)
 
@@ -76,32 +53,43 @@ SHORT_NAME = "Tiny-LLM-10M"
 MODEL_FAMILY = "tinyllm"
 # Tiny-LLM has context length 1024 only
 MAX_SEQ_LENGTH = 1024
+TARGET_MODULES = [
+    "q_proj", "k_proj", "v_proj", "o_proj",
+    "gate_proj", "up_proj", "down_proj",
+]
+# Full-tensor saves (not LoRA) — see mobilellm_r1_950m.py for rationale.
+MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
-# SFT hyperparameters - FULL FINE-TUNING (no LoRA)
-# 10M params x bf16 = 20 MB; full FT fits anywhere and is the verl#3226 fix
-# for GRPO collapse. LR cut 20x from the failed LoRA run (2e-4 -> 1e-5)
-# because we're now updating all params, not just low-rank deltas.
-SFT_BATCH_SIZE = 4
-SFT_GRAD_ACCUM = 8                # effective batch 32
-SFT_LR = 1e-5                     # was 2e-4 with LoRA
-SFT_EPOCHS = 3                    # was 5; full FT learns faster than LoRA
+# SFT hyperparameters
+# Tiny-LLM uses Llama's 128k vocabulary even though model is only 13M params.
+# Logits tensor (batch × seq=1024 × vocab=128k × 4 bytes) OOMs at batch=32.
+# Reduce to batch=2, grad_accum=16 (effective batch=32).
+SFT_BATCH_SIZE = 2
+SFT_GRAD_ACCUM = 16
+SFT_LR = 2e-4
+SFT_LORA_R = 32
+SFT_LORA_ALPHA = 64
+SFT_EPOCHS = 5  # bumped from 3 -> 5: 10M model needs more passes to learn format
 
-# GRPO hyperparameters - FULL FT + DAPO stabilisation
-# DAPO ("Decoupled Clip and Dynamic sAmpling Policy Optimization", verl
-# paper) fixes vanilla-GRPO entropy collapse on small models via:
-#   - clip-higher (epsilon_high > epsilon): preserves exploration
-#   - dropped KL penalty (beta=0): standard for reasoning RL
-#   - larger group of rollouts: more reliable advantage estimation
-GRPO_BATCH_SIZE = 4
-GRPO_GRAD_ACCUM = 4               # effective batch 16
-GRPO_LR = 5e-6                    # 10x lower than failed LoRA run (5e-5)
-GRPO_NUM_GENERATIONS = 4          # back to 4 (group needs variance)
-GRPO_MAX_STEPS = 500              # short run to catch collapse fast; bump
-                                  # if reward curve looks stable past 200
+# GRPO hyperparameters - re-tuned for Tiny-LLM (10M params + 128K vocab).
+# Earlier run hung with 4 gens * 512 tokens; the cap below stays conservative
+# but bumps max steps from 800 -> 2000 to give the model more time to settle
+# into the trained format. Tiny-LLM is a scaling-floor reference and may
+# never reach high format compliance, but a longer GRPO budget gives it a
+# fair shot.
+GRPO_BATCH_SIZE = 2
+GRPO_GRAD_ACCUM = 4
+GRPO_LR = 5e-5
+GRPO_LORA_R = 16
+GRPO_LORA_ALPHA = 32
+GRPO_NUM_GENERATIONS = 2          # was 4
+GRPO_MAX_STEPS = 2000             # bumped from 800 -> 2000
 GRPO_MAX_COMPLETION_LENGTH = 256
-GRPO_EPSILON = 0.20               # DAPO standard lower clip
-GRPO_EPSILON_HIGH = 0.28          # DAPO clip-higher anti-collapse
-GRPO_BETA = 0.0                   # no KL penalty
+# DAPO stabilisation (clip-higher + no KL) to prevent GRPO entropy collapse
+# on small LoRA policies (verl#3226).
+GRPO_EPSILON = 0.20
+GRPO_EPSILON_HIGH = 0.28
+GRPO_BETA = 0.0
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-Tiny-LLM-10M"
@@ -150,7 +138,7 @@ PARAMETER num_predict 512
 """
 
 
-# ─── Shared: full-FT model loading ───────────────────────────────────────────
+# ─── Shared: PEFT model loading ──────────────────────────────────────────────
 
 def _setup_pad_token(tokenizer, model):
     """Add a dedicated pad token if pad collides with eos.
@@ -218,9 +206,12 @@ def _untie_lm_head(model):
         print("  [Info] lm_head and embed_tokens already untied")
 
 
-# Markdown-style chat template that arnir0/Tiny-LLM's FineWeb pretraining
-# distribution actually recognises. Installed on the tokenizer in both SFT
-# and GRPO so the rendered text matches between phases and at inference.
+# ─── Markdown chat template (overrides the base model's native template) ──────
+# Installed on the tokenizer in SFT, GRPO, and export so the rendered text is
+# identical across train/RL/inference. Critically this OVERRIDES the base's
+# native chat template (e.g. MobileLLM-R1's <think>...</think> format), which
+# was the root cause of format failure: with the native template the model
+# learned to emit <think> instead of our <reasoning>/<answer> envelope.
 PLAIN_TEXT_CHAT_TEMPLATE = (
     "{% for message in messages %}"
     "{% if message['role'] == 'system' %}### System\n{{ message['content'] }}\n\n"
@@ -234,26 +225,25 @@ PLAIN_TEXT_CHAT_TEMPLATE = (
 
 
 def _install_chat_template(tokenizer):
-    """Install the FineWeb-friendly markdown template on the tokenizer.
-
-    arnir0/Tiny-LLM ships without a chat template. The previous run fell
-    back to a Llama-4 header-tag format the base had never seen, which
-    contributed to training instability. The markdown headers below are
-    in-distribution for a FineWeb base."""
+    """Force our markdown template onto the tokenizer, OVERWRITING any native
+    template. Persisted via tokenizer.save_pretrained so benchmark.py applies
+    the same contract at inference."""
     tokenizer.chat_template = PLAIN_TEXT_CHAT_TEMPLATE
 
 
-def _load_base_model_fullft(base_model: str):
-    """Load arnir0/Tiny-LLM in bf16 with all parameters trainable.
 
-    No PEFT / no quantisation. Verl#3226 documents that GRPO + LoRA
-    collapses the model output to garbage on small bases; full FT is the
-    documented fix. 10M params x bf16 = 20 MB, so memory is irrelevant.
+def _load_base_model_peft(base_model: str, lora_r: int, lora_alpha: int):
+    """Load Tiny-LLM in full bf16 (no quantization) + PEFT LoRA.
+
+    Same approach as MobileLLM: 4-bit BnB + weight tying caused NaN gradients.
+    Tiny-LLM is only 10M params (~20 MB in bf16) so quantization is unnecessary.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+
     _install_chat_template(tokenizer)
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -263,50 +253,93 @@ def _load_base_model_fullft(base_model: str):
         torch_dtype=torch.bfloat16,
     )
 
-    # Untie BEFORE resizing so the pad-token resize sees independent
-    # embed_tokens / lm_head modules (same pattern as the larger PEFT
-    # scripts -- a tied lm_head silently aliases embed_tokens, so a
-    # resize only updates one and the other goes out of sync).
+    # Untie FIRST so _setup_pad_token can resize lm_head independently
+    # of embed_tokens. If we resize first, transformers' resize only touches
+    # input embeddings for the tied case, leaving lm_head at old vocab size,
+    # which then crashes when LoRA-on-lm_head sees the mismatch in forward.
     _untie_lm_head(model)
     _setup_pad_token(tokenizer, model)
 
-    # All params already trainable by default; just sanity-print the count
-    n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    n_total = sum(p.numel() for p in model.parameters())
-    print(f"  Trainable params: {n_train:,} / {n_total:,} (100% - full FT)")
+    lora_config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
+        lora_dropout=0,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     return model, tokenizer
 
 
-def _load_sft_checkpoint_fullft(checkpoint_path: str):
-    """Load the SFT-trained full-FT model for GRPO continuation.
+def _load_peft_checkpoint(checkpoint_path: str, lora_r: int, lora_alpha: int):
+    """Load PEFT checkpoint in bf16, merge SFT adapters, add fresh GRPO LoRA.
 
-    With full FT the SFT checkpoint IS a complete causal-LM (no adapter
-    to merge). Just AutoModelForCausalLM.from_pretrained, install the
-    chat template, and return.
+    Uses the explicit base+resize+adapter reload pattern (per PEFT issue #1457
+    + transformers #36550) to avoid the AutoPeftModelForCausalLM auto-resize
+    breaking on modules_to_save'd lm_head/embed_tokens with new vocab.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import LoraConfig, PeftModel, get_peft_model
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
-    # Re-install in case the saved tokenizer lost the template through
-    # some round-trip (defensive; should already be there from SFT save).
+
     _install_chat_template(tokenizer)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        checkpoint_path,
+    # Tiny-LLM (arnir0/Tiny-LLM) ships without a chat template. SFT used a
+    # Llama-4-style fallback format directly as a string. TRL's GRPOTrainer
+    # passes prompts as a list of {role, content} dicts and unconditionally
+    # calls tokenizer.apply_chat_template, which raises ValueError if no
+    # template is set. So we install the same Llama-4-style format the SFT
+    # phase trained on as a Jinja template, ensuring GRPO prompts match
+    # SFT prompts exactly.
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = (
+            "{% for message in messages %}"
+            "<|header_start|>{{ message['role'] }}<|header_end|>\n\n"
+            "{{ message['content'] }}<|eot|>"
+            "{% endfor %}"
+            "{% if add_generation_prompt %}"
+            "<|header_start|>assistant<|header_end|>\n\n"
+            "{% endif %}"
+        )
+        print("  [Fix] Installed Llama-4-style chat template (matches SFT format)")
+
+    # Load fresh base, untie+resize, THEN load adapter on top (avoids
+    # AutoPeftModelForCausalLM auto-resize size-mismatch).
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    model = PeftModel.from_pretrained(
+        base, checkpoint_path,
+        is_trainable=False,
+        torch_dtype=torch.bfloat16,
+    )
+    model = model.merge_and_unload()
+    _untie_lm_head(model)
+    _setup_pad_token(tokenizer, model)
 
-    # SFT save already has tie_word_embeddings=False if we set it before
-    # save_model; re-assert as a safety belt.
-    if hasattr(model, "config"):
-        model.config.tie_word_embeddings = False
+    lora_config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=TARGET_MODULES,
+        modules_to_save=MODULES_TO_SAVE,  # full-tensor save for lm_head+embeds
+        lora_dropout=0,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
-    n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Trainable params: {n_train:,} (100% - full FT continued from SFT)")
     return model, tokenizer
 
 
@@ -325,27 +358,25 @@ def run_sft():
     print(f"FinSenti SFT - {SHORT_NAME}")
     print("=" * 70)
     print(f"  Base model:  {BASE_MODEL}")
-    print(f"  Backend:     FULL fine-tuning (no LoRA, no quantisation)")
+    print(f"  Backend:     PEFT + bitsandbytes (no Unsloth)")
+    print(f"  LoRA:        r={SFT_LORA_R}, alpha={SFT_LORA_ALPHA}")
     print(f"  Batch:       {SFT_BATCH_SIZE} x {SFT_GRAD_ACCUM} = {SFT_BATCH_SIZE * SFT_GRAD_ACCUM}")
     print(f"  LR: {SFT_LR}, Epochs: {SFT_EPOCHS}")
     print()
 
     _wandb_init_safe(
         project="FinSenti",
-        name=f"sft-{SHORT_NAME}-fullft-ep{SFT_EPOCHS}",
-        tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY, "full-ft"],
+        name=f"sft-{SHORT_NAME}-ep{SFT_EPOCHS}",
+        tags=["sft", "warm-up", MODEL_KEY, MODEL_FAMILY, "peft"],
         config={
             "phase": "sft", "model_key": MODEL_KEY, "base_model": BASE_MODEL,
             "epochs": SFT_EPOCHS, "batch_size": SFT_BATCH_SIZE, "lr": SFT_LR,
-            "backend": "full-ft",
+            "lora_r": SFT_LORA_R, "lora_alpha": SFT_LORA_ALPHA,
+            "backend": "peft+bnb",
         },
     )
 
-    model, tokenizer = _load_base_model_fullft(BASE_MODEL)
-    # Render using the markdown chat template we just installed; this is
-    # the same format GRPO will see at rollout time and benchmark.py at
-    # inference time -- single source of truth.
-    print(f"  Chat template: installed (markdown ### System / ### Input / ### Response)")
+    model, tokenizer = _load_base_model_peft(BASE_MODEL, SFT_LORA_R, SFT_LORA_ALPHA)
 
     # Load dataset
     data_path = Path(DATASET_DIR) / "sft_train.jsonl"
@@ -355,6 +386,8 @@ def run_sft():
             if line.strip():
                 samples.append(json.loads(line))
 
+    # Our markdown template is installed on the tokenizer, so always render
+    # via apply_chat_template (single train/inference contract).
     formatted = []
     for s in samples:
         messages = [
@@ -370,7 +403,7 @@ def run_sft():
     dataset = Dataset.from_list(formatted)
     print(f"Loaded {len(dataset)} SFT samples")
     # Debug: show first formatted sample to verify template
-    print(f"  Sample 0 (first 400 chars):\n{formatted[0]['text'][:400]}")
+    print(f"  Sample 0 (first 300 chars): {formatted[0]['text'][:300]}")
 
     # TRL >=0.24: tokenizer renamed to processing_class
     import inspect
@@ -404,14 +437,6 @@ def run_sft():
     start = time.time()
     trainer.train()
     elapsed = time.time() - start
-
-    # Force tie_word_embeddings=False on the saved config so the trained
-    # lm_head survives the round-trip. We untied at runtime in
-    # _load_base_model_fullft so embed_tokens and lm_head moved
-    # independently; persist that decision to disk.
-    model.config.tie_word_embeddings = False
-    if hasattr(model, "generation_config") and model.generation_config is not None:
-        model.generation_config.tie_word_embeddings = False
 
     trainer.save_model(SFT_OUTPUT)
     tokenizer.save_pretrained(SFT_OUTPUT)
@@ -460,29 +485,27 @@ def run_grpo():
     print("=" * 70)
     print(f"FinSenti GRPO - {SHORT_NAME}")
     print("=" * 70)
-    print(f"  Backend:     TRL GRPOTrainer, FULL FT (no LoRA), DAPO-stabilised")
+    print(f"  Backend:     Standard TRL GRPOTrainer (no Unsloth)")
+    print(f"  LoRA:        r={GRPO_LORA_R}, alpha={GRPO_LORA_ALPHA}")
     print(f"  Batch:       {GRPO_BATCH_SIZE} x {GRPO_GRAD_ACCUM} = {GRPO_BATCH_SIZE * GRPO_GRAD_ACCUM}")
     print(f"  LR: {GRPO_LR}, Gens: {GRPO_NUM_GENERATIONS}, Max steps: {GRPO_MAX_STEPS}")
-    print(f"  DAPO:        epsilon={GRPO_EPSILON}, epsilon_high={GRPO_EPSILON_HIGH}, beta={GRPO_BETA}")
     print()
 
     _wandb_init_safe(
         project="FinSenti",
-        name=f"grpo-{SHORT_NAME}-fullft-dapo-max{GRPO_MAX_STEPS}",
-        tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY, "full-ft", "dapo"],
+        name=f"grpo-{SHORT_NAME}-max{GRPO_MAX_STEPS}-es",
+        tags=["grpo", "rl", "early-stopping", MODEL_KEY, MODEL_FAMILY, "peft"],
         config={
             "phase": "grpo", "model_key": MODEL_KEY, "max_steps": GRPO_MAX_STEPS,
             "batch_size": GRPO_BATCH_SIZE, "lr": GRPO_LR,
-            "num_generations": GRPO_NUM_GENERATIONS,
-            "epsilon": GRPO_EPSILON, "epsilon_high": GRPO_EPSILON_HIGH,
-            "beta": GRPO_BETA,
-            "backend": "full-ft",
+            "num_generations": GRPO_NUM_GENERATIONS, "lora_r": GRPO_LORA_R,
+            "backend": "peft+bnb",
         },
     )
 
-    # Load full-FT SFT checkpoint (no PEFT merge needed)
+    # Load SFT checkpoint (merge SFT adapters, add fresh GRPO LoRA)
     print(f"Loading SFT checkpoint from {SFT_OUTPUT}...")
-    model, tokenizer = _load_sft_checkpoint_fullft(SFT_OUTPUT)
+    model, tokenizer = _load_peft_checkpoint(SFT_OUTPUT, GRPO_LORA_R, GRPO_LORA_ALPHA)
 
     # Load GRPO dataset
     data_path = Path(DATASET_DIR) / "grpo_train.jsonl"
@@ -510,42 +533,35 @@ def run_grpo():
     _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
     _config_key = "config" if "config" in _grpo_params else "args"
 
-    # Build GRPOConfig with DAPO-style stabilisation. Some kwargs were
-    # added in recent TRL versions; probe the signature so we degrade
-    # gracefully on older installs.
     _grpoconfig_params = inspect.signature(GRPOConfig.__init__).parameters
     grpo_cfg_kwargs = dict(
-        output_dir=GRPO_OUTPUT,
-        max_steps=GRPO_MAX_STEPS,
-        per_device_train_batch_size=GRPO_BATCH_SIZE,
-        gradient_accumulation_steps=GRPO_GRAD_ACCUM,
-        learning_rate=GRPO_LR,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.1,
-        num_generations=GRPO_NUM_GENERATIONS,
-        max_completion_length=GRPO_MAX_COMPLETION_LENGTH,
-        max_prompt_length=512,
-        mask_truncated_completions=True,
-        logging_steps=10,
-        save_steps=50,
-        save_total_limit=5,
-        bf16=True,
-        report_to="wandb",
-        run_name=wandb.run.name if wandb.run else "grpo",
-        seed=42,
+    output_dir=GRPO_OUTPUT,
+    max_steps=GRPO_MAX_STEPS,
+    per_device_train_batch_size=GRPO_BATCH_SIZE,
+    gradient_accumulation_steps=GRPO_GRAD_ACCUM,
+    learning_rate=GRPO_LR,
+    lr_scheduler_type="cosine",
+    warmup_ratio=0.1,
+    num_generations=GRPO_NUM_GENERATIONS,
+    max_completion_length=GRPO_MAX_COMPLETION_LENGTH,
+    max_prompt_length=512, mask_truncated_completions=True,
+    logging_steps=10,
+    save_steps=50,
+    save_total_limit=5,
+    bf16=True,
+    report_to="wandb",
+    run_name=wandb.run.name if wandb.run else "grpo",
+    seed=42,
     )
-    # DAPO knobs -- only set if the installed TRL exposes them.
-    if "epsilon" in _grpoconfig_params:
-        grpo_cfg_kwargs["epsilon"] = GRPO_EPSILON
-    if "epsilon_high" in _grpoconfig_params:
-        grpo_cfg_kwargs["epsilon_high"] = GRPO_EPSILON_HIGH
-        print(f"  [DAPO] clip-higher enabled: epsilon_high={GRPO_EPSILON_HIGH}")
+    if 'epsilon' in _grpoconfig_params: grpo_cfg_kwargs['epsilon'] = GRPO_EPSILON
+    if 'epsilon_high' in _grpoconfig_params:
+        grpo_cfg_kwargs['epsilon_high'] = GRPO_EPSILON_HIGH
+        print(f'  [DAPO] clip-higher enabled: epsilon_high={GRPO_EPSILON_HIGH}')
     else:
-        print(f"  [warn] epsilon_high not in this TRL build; "
-              f"vanilla GRPO clipping (entropy-collapse risk)")
-    if "beta" in _grpoconfig_params:
-        grpo_cfg_kwargs["beta"] = GRPO_BETA
-        print(f"  [DAPO] KL penalty disabled (beta=0)")
+        print('  [warn] epsilon_high not in this TRL build; vanilla GRPO clipping')
+    if 'beta' in _grpoconfig_params:
+        grpo_cfg_kwargs['beta'] = GRPO_BETA
+        print('  [DAPO] KL penalty disabled (beta=0)')
 
     trainer_kwargs = {
         "model": model,
@@ -565,17 +581,38 @@ def run_grpo():
     elif "processing_class" in _grpo_params:
         trainer_kwargs["processing_class"] = tokenizer
 
-    # Wire up warnings_issued on the raw model (no PEFT chain to worry
-    # about anymore -- full FT means model IS the LlamaForCausalLM).
-    if not hasattr(model, "warnings_issued"):
-        model.warnings_issued = {}
+    # TRL GRPOTrainer expects model.warnings_issued dict, but PEFT-wrapped
+    # models delegate __getattr__ to the base model which lacks it.
+    # Set on the underlying model so PEFT's attribute chain finds it.
+    #
+    # IMPORTANT: don't use `while hasattr(m, "base_model"): m = m.base_model`.
+    # PEFT issue #1892 documents that `base_model` is a property that can
+    # return self in certain init states, leading to an infinite loop. That
+    # was the root cause of jobs 6914010/6914011 hanging at "Loaded N GRPO
+    # samples" for 36-48h. Use PEFT's get_base_model() which is bounded.
+    print("  [debug] resolving base model for warnings_issued...", flush=True)
+    _base = model.get_base_model() if hasattr(model, "get_base_model") else model
+    # Drop one more level if there's a `.model` attribute (e.g. LlamaForCausalLM.model -> LlamaModel)
+    if hasattr(_base, "model") and not isinstance(getattr(_base, "model", None), str):
+        _base = _base.model
+    if not hasattr(_base, "warnings_issued"):
+        _base.warnings_issued = {}
+    model.warnings_issued = _base.warnings_issued
+    print("  [debug] warnings_issued wired up", flush=True)
 
-    # Force-disable kv cache: gradient checkpointing + cache = warning
-    # loop that can stall the rollout loop per TRL #3683.
+    # Force-disable kv cache: required for PEFT + GRPO; otherwise the
+    # "Caching is incompatible with gradient checkpointing" warning loop
+    # documented in TRL #3683 can stall the rollout loop.
     if hasattr(model, "config"):
         model.config.use_cache = False
+    if hasattr(_base, "config"):
+        _base.config.use_cache = False
 
-    # Disable gradient checkpointing -- 10M model, no memory pressure.
+    # Disable gradient checkpointing before GRPO. For the 10M model with
+    # small batch the memory save is irrelevant, and gradient checkpointing
+    # + PEFT + bitsandbytes is a known source of silent hangs in TRL's
+    # rollout loop (job 6900040 sat for 20h with zero CPU activity after
+    # "Loaded 15249 GRPO samples").
     if hasattr(model, "gradient_checkpointing_disable"):
         print("  [debug] disabling gradient checkpointing for GRPO", flush=True)
         model.gradient_checkpointing_disable()
@@ -606,12 +643,6 @@ def run_grpo():
     elapsed = time.time() - start
     print(f"  [debug] GRPO training finished in {elapsed:.0f}s", flush=True)
 
-    # Persist tie_word_embeddings=False so the saved lm_head is preserved
-    # on reload (same fix that makes the larger PEFT models work).
-    model.config.tie_word_embeddings = False
-    if hasattr(model, "generation_config") and model.generation_config is not None:
-        model.generation_config.tie_word_embeddings = False
-
     trainer.save_model(GRPO_OUTPUT)
     tokenizer.save_pretrained(GRPO_OUTPUT)
 
@@ -635,13 +666,14 @@ def run_grpo():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Phase 3: Export (full-FT direct copy - no Unsloth GGUF)
+# Phase 3: Export (PEFT merge - no Unsloth GGUF)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_export(upload=False):
     import torch
     import wandb
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import PeftModel
 
     output_dir = Path(EXPORT_OUTPUT)
     merged_dir = output_dir / "merged_hf"
@@ -650,7 +682,7 @@ def run_export(upload=False):
     print("=" * 70)
     print(f"FinSenti Export - {SHORT_NAME}")
     print("=" * 70)
-    print(f"  Method:    Direct copy of full-FT checkpoint (no PEFT merge)")
+    print(f"  Method:    PEFT merge (no Unsloth GGUF)")
     print(f"  Source:    {GRPO_OUTPUT}")
     print(f"  Output:    {merged_dir}")
     print(f"  NOTE: GGUF conversion requires manual llama.cpp convert_hf_to_gguf.py")
@@ -659,30 +691,40 @@ def run_export(upload=False):
     _wandb_init_safe(
         project="FinSenti",
         name=f"export-{SHORT_NAME}",
-        tags=["export", "full-ft", MODEL_KEY],
+        tags=["export", "peft-merge", MODEL_KEY],
         config={
             "phase": "export", "model_key": MODEL_KEY,
             "grpo_checkpoint": GRPO_OUTPUT,
-            "method": "full_ft_copy",
+            "method": "peft_merge",
         },
     )
 
-    # Full FT: GRPO_OUTPUT already contains the complete trained
-    # causal-LM (no adapter to merge). Load it once just to verify
-    # integrity, then save to the merged_hf dir for the rest of the
-    # pipeline (HF upload, MLX, GGUF) to consume.
-    print(f"Loading full-FT checkpoint from {GRPO_OUTPUT}...")
+    # Merge PEFT adapters and save HF weights.
+    # IMPORTANT: load base, resize embeddings to match the adapter's vocab,
+    # then attach adapter. See mobilellm_r1_950m.py:run_export for rationale.
+    print(f"Loading and merging PEFT adapters from {GRPO_OUTPUT}...")
     start = time.time()
 
     tokenizer = AutoTokenizer.from_pretrained(GRPO_OUTPUT, trust_remote_code=True)
-    _install_chat_template(tokenizer)  # ensure benchmark.py sees it
-    model = AutoModelForCausalLM.from_pretrained(
-        GRPO_OUTPUT,
+
+    _install_chat_template(tokenizer)
+    base = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
         device_map={"": 0},
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
-    # Belt + suspenders: assert the trained lm_head survived save/load.
+    _untie_lm_head(base)
+    _setup_pad_token(tokenizer, base)
+    model = PeftModel.from_pretrained(base, GRPO_OUTPUT)
+    model = model.merge_and_unload()
+
+    # Force tie_word_embeddings=False on the saved config. Tiny-LLM (based
+    # on arnir0/Tiny-LLM) ties lm_head to embed_tokens. _untie_lm_head()
+    # untied them at runtime so LoRA could train both independently, but
+    # the saved config still says tied -> on reload, transformers re-ties
+    # and discards the trained lm_head delta. Setting this here is what
+    # makes the trained lm_head delta survive the round-trip.
     model.config.tie_word_embeddings = False
     if hasattr(model, "generation_config") and model.generation_config is not None:
         model.generation_config.tie_word_embeddings = False
@@ -719,7 +761,7 @@ def run_export(upload=False):
     wandb.summary.update({
         "merged_size_mb": size_mb,
         "export_time_sec": round(elapsed, 1),
-        "method": "full_ft_copy",
+        "method": "peft_merge",
     })
 
     # Upload to HuggingFace
@@ -779,7 +821,7 @@ def main():
     phases = ["sft", "grpo", "export"] if args.phase == "all" else [args.phase]
 
     print(f"\n{'#'*70}")
-    print(f"# FinSenti Pipeline - {SHORT_NAME} (full-FT + DAPO)")
+    print(f"# FinSenti Pipeline - {SHORT_NAME} (PEFT)")
     print(f"# Phases: {' -> '.join(phases)}")
     print(f"{'#'*70}\n")
 
