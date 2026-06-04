@@ -643,6 +643,51 @@ def run_grpo():
 # Phase 3: Export (PEFT merge - no Unsloth GGUF)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _verify_export_roundtrip(merged_dir, system_prompt, min_tok_acc=0.10):
+    """Reload the merged model FROM DISK and assert it round-trips. Raises
+    RuntimeError (fails the job) if the reloaded model is token salad, so we
+    never upload a broken model or waste an eval cycle. Threshold is low (0.10)
+    so genuine capacity-floor models still upload as scaling-floor data points;
+    only true save/reload corruption (acc ~0.00) is blocked.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    print("\n  [verify] Reloading merged model from disk to check round-trip...")
+    tok = AutoTokenizer.from_pretrained(str(merged_dir), trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        str(merged_dir), torch_dtype=torch.float32,
+        trust_remote_code=True, device_map={"": 0},
+    )
+    model.train(False)  # inference mode (no dropout)
+    probes = [
+        ("Apple beats Q4 earnings estimates with $89B revenue, up 15% YoY.",
+         "<reasoning>\nStrong earnings beat signals positive sentiment.\n</reasoning>\n<answer>positive</answer>"),
+        ("The firm filed for bankruptcy after defaulting on its debt.",
+         "<reasoning>\nBankruptcy and default indicate negative sentiment.\n</reasoning>\n<answer>negative</answer>"),
+    ]
+    accs = []
+    for text, out_txt in probes:
+        msgs = [{"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": out_txt}]
+        full = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False)
+        ids = tok(full, return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            logits = model(**ids).logits
+        pred = logits[0, :-1].argmax(-1)
+        gold = ids.input_ids[0, 1:]
+        accs.append((pred == gold).float().mean().item())
+    acc = sum(accs) / len(accs)
+    del model
+    print(f"  [verify] teacher-forced token acc = {acc:.3f} (threshold {min_tok_acc})")
+    if acc < min_tok_acc:
+        raise RuntimeError(
+            f"Export verification FAILED: teacher-forced acc {acc:.3f} < {min_tok_acc}. "
+            f"Model did not round-trip (token salad / lost weights). NOT uploading."
+        )
+    print(f"  [verify] PASS - model round-trips (acc {acc:.3f}).")
+
+
 def run_export(upload=False):
     import torch
     import wandb
@@ -714,6 +759,9 @@ def run_export(upload=False):
     size_mb = round(total_size / (1024 * 1024), 1)
 
     print(f"  Merged weights saved ({size_mb} MB, {elapsed:.0f}s)")
+
+    # GATE: verify the saved model round-trips before any upload.
+    _verify_export_roundtrip(merged_dir, SYSTEM_PROMPT)
 
     # MLX export (for vllm-mlx / mlx-lm / mlx-vlm compatibility)
     try:
