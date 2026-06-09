@@ -155,8 +155,18 @@ def _setup_pad_token(tokenizer, model):
     )
     if needs_new_pad:
         tokenizer.add_special_tokens({"pad_token": "<|finsenti_pad|>"})
-        if model is not None:
-            new_vocab = len(tokenizer)
+        print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
+    else:
+        print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
+
+    # ALWAYS reconcile model vocab with tokenizer length. Covers (a) just-added
+    # pad, and (b) GRPO/export reload where the SFT-checkpoint tokenizer already
+    # has the pad (len = base+1) but the freshly-loaded base is at the original
+    # vocab -> PeftModel.from_pretrained "size mismatch [base+1] vs [base]" crash.
+    if model is not None:
+        new_vocab = len(tokenizer)
+        cur_vocab = model.get_input_embeddings().weight.shape[0]
+        if cur_vocab != new_vocab:
             model.resize_token_embeddings(new_vocab)
             for inner in (model, getattr(model, 'model', None),
                           getattr(getattr(model, 'model', None), 'model', None)):
@@ -175,9 +185,7 @@ def _setup_pad_token(tokenizer, model):
                     inner.lm_head = new_lm
                     print(f"  [Fix] Manually resized lm_head {old_w.shape[0]} -> {new_vocab}")
                 break
-        print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
-    else:
-        print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
+            print(f"  [Fix] Reconciled model vocab {cur_vocab} -> {new_vocab} to match tokenizer")
 
 
 def _untie_lm_head(model):

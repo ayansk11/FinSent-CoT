@@ -158,12 +158,25 @@ def _setup_pad_token(tokenizer, model):
     )
     if needs_new_pad:
         tokenizer.add_special_tokens({"pad_token": "<|finsenti_pad|>"})
-        if model is not None:
-            new_vocab = len(tokenizer)
+        print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
+    else:
+        print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
+
+    # ALWAYS reconcile model vocab with tokenizer length. This covers TWO cases:
+    #   (a) we just added a pad above -> base must grow by 1, and
+    #   (b) GRPO/export reload: the SFT-checkpoint tokenizer ALREADY has the pad
+    #       (len = base+1), but the freshly-loaded base is still at the original
+    #       vocab. The old code only resized inside the needs_new_pad branch, so
+    #       on reload it skipped the resize -> PeftModel.from_pretrained then hit
+    #       "size mismatch [base+1] vs [base]" on embed_tokens/lm_head and the
+    #       GRPO phase crashed. Resizing here regardless fixes that reload bug.
+    if model is not None:
+        new_vocab = len(tokenizer)
+        cur_vocab = model.get_input_embeddings().weight.shape[0]
+        if cur_vocab != new_vocab:
             model.resize_token_embeddings(new_vocab)
             # When lm_head is untied from embed_tokens, resize_token_embeddings
-            # only resizes the input embeddings. Manually resize lm_head too
-            # so the LoRA layer that gets added later sees the correct vocab.
+            # may only touch the input embeddings. Manually resize lm_head too.
             for inner in (model, getattr(model, 'model', None),
                           getattr(getattr(model, 'model', None), 'model', None)):
                 if inner is None or not hasattr(inner, 'lm_head'):
@@ -176,17 +189,13 @@ def _setup_pad_token(tokenizer, model):
                     ).to(old_w.device, old_w.dtype)
                     with torch.no_grad():
                         new_lm.weight[:old_w.shape[0]].copy_(old_w)
-                        # Initialize the new pad-token row with the mean of
-                        # existing rows so it starts in-distribution.
                         if new_vocab > old_w.shape[0]:
                             new_lm.weight[old_w.shape[0]:] = old_w.mean(dim=0, keepdim=True)
                     inner.lm_head = new_lm
                     print(f"  [Fix] Manually resized lm_head {old_w.shape[0]} -> {new_vocab} "
                           f"(was untied from embed_tokens)")
                 break
-        print(f"  [Fix] Added dedicated pad_token (id={tokenizer.pad_token_id}, eos_id={tokenizer.eos_token_id})")
-    else:
-        print(f"  [Info] pad_token_id={tokenizer.pad_token_id}, eos_token_id={tokenizer.eos_token_id}")
+            print(f"  [Fix] Reconciled model vocab {cur_vocab} -> {new_vocab} to match tokenizer")
 
 
 def _untie_lm_head(model):
