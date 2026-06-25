@@ -69,23 +69,30 @@ TARGET_MODULES = [
 # https://github.com/unslothai/unsloth/issues/2238
 MODULES_TO_SAVE = ["lm_head", "embed_tokens"]
 
-# SFT hyperparameters
+# SFT hyperparameters  (HIGHER-EFFORT retrain, 2026-06-25)
 # Batch reduced from 8 to 2: MobileLLM has 128k vocab → logits tensor (batch × seq × vocab)
 # hits 16GB at batch=8. Keeps effective batch=32 via increased grad_accum.
+# Prior run: SFT learned format well, GRPO reached format=0.99 but sentiment
+# correctness only 0.61 and early-stopped at 300/3000 steps. Bigger LoRA gives
+# the policy more capacity to learn the actual task (close <answer> correctly).
 SFT_BATCH_SIZE = 2
 SFT_GRAD_ACCUM = 16
 SFT_LR = 2e-4
-SFT_LORA_R = 16
-SFT_LORA_ALPHA = 32
-SFT_EPOCHS = 5  # bumped from 3 -> 5 to drill format harder vs strong <think> prior
+SFT_LORA_R = 32          # was 16 — more adapter capacity for the task
+SFT_LORA_ALPHA = 64      # was 32 (keep alpha = 2*r)
+SFT_EPOCHS = 5
 
-# GRPO hyperparameters
+# GRPO hyperparameters  (HIGHER-EFFORT)
+# The prior run early-stopped at 300/3000 with reward still high (3.44) and
+# sentiment_correctness (0.61) still climbing — it barely used the budget.
+# Key levers: bigger LoRA, more rollouts per prompt (better advantage signal),
+# and a far more patient early-stop so GRPO actually runs deep into the budget.
 GRPO_BATCH_SIZE = 2
 GRPO_GRAD_ACCUM = 4
 GRPO_LR = 5e-5
-GRPO_LORA_R = 16
-GRPO_LORA_ALPHA = 32
-GRPO_NUM_GENERATIONS = 4
+GRPO_LORA_R = 32         # was 16
+GRPO_LORA_ALPHA = 64     # was 32
+GRPO_NUM_GENERATIONS = 8 # was 4 — wider groups, better advantage estimates + exploration
 GRPO_MAX_STEPS = 3000
 GRPO_MAX_COMPLETION_LENGTH = 512
 # DAPO stabilisation (clip-higher + no KL) to prevent GRPO entropy collapse
@@ -93,6 +100,11 @@ GRPO_MAX_COMPLETION_LENGTH = 512
 GRPO_EPSILON = 0.20
 GRPO_EPSILON_HIGH = 0.28
 GRPO_BETA = 0.0
+# Early-stopping: much more patient than the prior run (patience=10, warmup=200
+# stopped it at step 300). Let GRPO run deep — the reward was still improving.
+GRPO_ES_PATIENCE = 30
+GRPO_ES_WARMUP = 600
+GRPO_ES_MIN_DELTA = 0.005
 
 # HuggingFace repos
 HF_FULL = "Ayansk11/FinSenti-MobileLLM-R1-950M"
@@ -539,7 +551,8 @@ def run_grpo():
     ])
     print(f"Loaded {len(dataset)} GRPO samples")
 
-    early_stop = RewardEarlyStoppingCallback(patience=10, min_delta=0.01, warmup_steps=200)
+    early_stop = RewardEarlyStoppingCallback(
+        patience=GRPO_ES_PATIENCE, min_delta=GRPO_ES_MIN_DELTA, warmup_steps=GRPO_ES_WARMUP)
 
     # Detect TRL API version (config= vs args=, tokenizer= vs processing_class=)
     _grpo_params = inspect.signature(GRPOTrainer.__init__).parameters
