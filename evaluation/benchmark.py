@@ -200,7 +200,7 @@ def _load_transformers(model_id: str):
     return tok, model
 
 
-def query_transformers(model_id: str, text: str, max_new_tokens: int = 512) -> str:
+def query_transformers(model_id: str, text: str, max_new_tokens: int = 512, temperature: float = 0.0) -> str:
     """Generate a response with a locally loaded HF model."""
     import torch
 
@@ -218,15 +218,21 @@ def query_transformers(model_id: str, text: str, max_new_tokens: int = 512) -> s
         prompt = f"{SYSTEM_PROMPT}\n\nText: {text}\n\nResponse:"
 
     inputs = tok(prompt, return_tensors="pt").to(model.device)
+    # Small RL-tuned models (MobileLLM-950M, Gemma3-270M, Tiny-LLM-10M)
+    # degenerate under greedy decoding -- malformed/nested tags, rarely a
+    # clean <answer> -- even though their GRPO rollouts (sampled) hit ~0.99
+    # format. Sampling at temperature>0 restores the trained behaviour. Large
+    # models stay greedy (temperature=0) for deterministic, reproducible eval.
+    gen_kwargs = dict(
+        max_new_tokens=max_new_tokens,
+        pad_token_id=tok.pad_token_id or tok.eos_token_id,
+    )
+    if temperature and temperature > 0:
+        gen_kwargs.update(do_sample=True, temperature=temperature, top_p=0.9)
+    else:
+        gen_kwargs.update(do_sample=False, temperature=None, top_p=None)
     with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            temperature=None,
-            top_p=None,
-            pad_token_id=tok.pad_token_id or tok.eos_token_id,
-        )
+        out = model.generate(**inputs, **gen_kwargs)
     gen = tok.decode(
         out[0][inputs.input_ids.shape[1]:],
         skip_special_tokens=True,
@@ -334,6 +340,12 @@ def main():
              "(MobileLLM uses native <think> tags) — without enough room "
              "to close </think> the model never reaches <answer> and "
              "scores 0.",
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=0.0,
+        help="Sampling temperature (transformers backend). 0.0 = greedy "
+             "(default, deterministic). Set >0 (e.g. 0.7) for small RL-tuned "
+             "models that degenerate under greedy decoding.",
     )
     args = parser.parse_args()
 
@@ -448,6 +460,7 @@ def main():
                 response = query_transformers(
                     args.model, tc["text"],
                     max_new_tokens=args.max_new_tokens,
+                    temperature=args.temperature,
                 )
 
             latency = time.time() - start

@@ -145,6 +145,16 @@ PER_MODEL_MAX_NEW_TOKENS = {
                                  # <reasoning> but only 10% close it within 512
 }
 
+# Small RL-tuned models degenerate under greedy decoding (malformed/nested
+# tags, rarely a clean <answer>) despite ~0.99 format in sampled GRPO
+# rollouts. Eval them with sampling to match how they were trained/rewarded;
+# large models stay greedy (deterministic). See the decode-gap analysis.
+PER_MODEL_TEMPERATURE = {
+    "mobilellm-r1-950m": 0.7,
+    "gemma3-270m": 0.7,
+    "tiny-llm-10m": 0.7,
+}
+
 
 def sbatch_for_finsenti(
     key: str, repo_id: str, benchmark: str, max_samples: int | None
@@ -153,6 +163,8 @@ def sbatch_for_finsenti(
     extra = ""
     if key in PER_MODEL_MAX_NEW_TOKENS:
         extra = f" --max-new-tokens {PER_MODEL_MAX_NEW_TOKENS[key]}"
+    if key in PER_MODEL_TEMPERATURE:
+        extra += f" --temperature {PER_MODEL_TEMPERATURE[key]}"
     return SBATCH_TEMPLATE.format(
         short_name=short,
         benchmark=benchmark,
